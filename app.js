@@ -2,6 +2,7 @@ const STORAGE_KEY = "trafikalarm.prototype.v4";
 const COPENHAGEN_CENTER = { lat: 55.6761, lng: 12.5683 };
 const TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse";
+const OSRM_ROUTE_URL = "https://router.project-osrm.org/route/v1/driving";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const TILE_SIZE = 256;
 const MIN_ZOOM = 10;
@@ -411,6 +412,11 @@ function bindEvents() {
     renderAll();
     fitActiveRoute();
     saveState();
+    elements.sampleRoute.disabled = false;
+    if (message) {
+      showToast(message);
+      return;
+    }
   });
 
   elements.addRoute.addEventListener("click", () => {
@@ -475,8 +481,11 @@ function bindEvents() {
     });
   });
 
-  elements.sampleRoute.addEventListener("click", () => {
-    setSampleRoute(state.routeMode);
+  elements.sampleRoute.addEventListener("click", async () => {
+    elements.sampleRoute.disabled = true;
+    readForm();
+    showToast("Finder rute ud fra dine adresser...");
+    const message = await setSuggestedRoute(state.routeMode);
     invalidateActiveRouteStatus();
     renderAll();
     fitActiveRoute();
@@ -1405,6 +1414,25 @@ async function requestNotifications() {
   showToast(permission === "granted" ? "Push er aktiveret." : "Push blev ikke aktiveret.");
 }
 
+async function setSuggestedRoute(mode) {
+  const endpoints = await resolveAddressEndpoints(mode);
+  const route = getActiveRoute();
+
+  if (!endpoints) {
+    setSampleRoute(mode);
+    return "Jeg kunne ikke finde begge adresser, så demo-ruten blev brugt.";
+  }
+
+  const osrmRoute = await fetchSuggestedRoute(endpoints[0], endpoints[1]);
+  if (osrmRoute.length >= 2) {
+    route.points = osrmRoute;
+    return "Ruten er foreslået ud fra hjem og arbejde og klar til redigering.";
+  }
+
+  route.points = endpoints;
+  return "Adresserne blev fundet, men ruteforslaget fejlede. Jeg har tegnet start og slut ind.";
+}
+
 function setSampleRoute(mode) {
   const endpoints = getAddressEndpoints(mode);
   const route = getActiveRoute();
@@ -1414,6 +1442,79 @@ function setSampleRoute(mode) {
   }
 
   route.points = sampleRoutes[mode].map((point) => ({ ...point }));
+}
+
+async function resolveAddressEndpoints(mode) {
+  const home = await resolveProfileLocation("home");
+  const work = await resolveProfileLocation("work");
+  if (!home || !work) return null;
+
+  return mode === "work"
+    ? [toRouteEndpoint(home, "Start"), toRouteEndpoint(work, "Slut")]
+    : [toRouteEndpoint(work, "Start"), toRouteEndpoint(home, "Slut")];
+}
+
+async function resolveProfileLocation(kind) {
+  const locationKey = kind === "home" ? "homeLocation" : "workLocation";
+  const input = kind === "home" ? elements.homeInput : elements.workInput;
+  const current = state.user[locationKey];
+  if (current && input.value.trim() === current.label) return current;
+
+  const query = input.value.trim();
+  if (query.length < 3) return null;
+
+  const suggestion = (await fetchDawaAddresses(query))[0];
+  if (!suggestion) return null;
+
+  state.user[kind] = suggestion.label;
+  state.user[locationKey] = {
+    label: suggestion.label,
+    roadName: suggestion.roadName,
+    lat: suggestion.lat,
+    lng: suggestion.lng,
+  };
+  input.value = suggestion.label;
+  return state.user[locationKey];
+}
+
+function toRouteEndpoint(location, fallback) {
+  return {
+    lat: location.lat,
+    lng: location.lng,
+    roadName: location.roadName || location.label || fallback,
+  };
+}
+
+async function fetchSuggestedRoute(start, end) {
+  const endpoint = `${OSRM_ROUTE_URL}/${start.lng},${start.lat};${end.lng},${end.lat}`;
+  const url = new URL(endpoint);
+  url.searchParams.set("overview", "full");
+  url.searchParams.set("geometries", "geojson");
+
+  try {
+    const response = await fetch(url.toString(), {
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) throw new Error("Route lookup failed");
+
+    const data = await response.json();
+    const coordinates = data.routes && data.routes[0] && data.routes[0].geometry && data.routes[0].geometry.coordinates;
+    if (!Array.isArray(coordinates) || coordinates.length < 2) return [];
+
+    return thinCoordinates(coordinates, 64).map(([lng, lat], index, list) => ({
+      lat: roundCoord(lat),
+      lng: roundCoord(lng),
+      roadName: index === 0 ? start.roadName : index === list.length - 1 ? end.roadName : "Foreslået rute",
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function thinCoordinates(coordinates, maxPoints) {
+  if (coordinates.length <= maxPoints) return coordinates;
+  const step = (coordinates.length - 1) / (maxPoints - 1);
+  return Array.from({ length: maxPoints }, (_, index) => coordinates[Math.round(index * step)]);
 }
 
 function getAddressEndpoints(mode) {
