@@ -1490,6 +1490,7 @@ async function fetchSuggestedRoute(start, end) {
   const url = new URL(endpoint);
   url.searchParams.set("overview", "full");
   url.searchParams.set("geometries", "geojson");
+  url.searchParams.set("steps", "true");
 
   try {
     const response = await fetch(url.toString(), {
@@ -1498,13 +1499,22 @@ async function fetchSuggestedRoute(start, end) {
     if (!response.ok) throw new Error("Route lookup failed");
 
     const data = await response.json();
-    const coordinates = data.routes && data.routes[0] && data.routes[0].geometry && data.routes[0].geometry.coordinates;
+    const route = data.routes && data.routes[0];
+    const stepPoints = extractRouteStepPoints(route);
+    if (stepPoints.length >= 2) {
+      const points = thinRoutePoints(stepPoints, 64);
+      points[0].roadName = start.roadName;
+      points[points.length - 1].roadName = end.roadName;
+      return points;
+    }
+
+    const coordinates = route && route.geometry && route.geometry.coordinates;
     if (!Array.isArray(coordinates) || coordinates.length < 2) return [];
 
     return thinCoordinates(coordinates, 64).map(([lng, lat], index, list) => ({
       lat: roundCoord(lat),
       lng: roundCoord(lng),
-      roadName: index === 0 ? start.roadName : index === list.length - 1 ? end.roadName : "Foreslået rute",
+      roadName: index === 0 ? start.roadName : index === list.length - 1 ? end.roadName : "Ukendt vej",
     }));
   } catch {
     return [];
@@ -1515,6 +1525,38 @@ function thinCoordinates(coordinates, maxPoints) {
   if (coordinates.length <= maxPoints) return coordinates;
   const step = (coordinates.length - 1) / (maxPoints - 1);
   return Array.from({ length: maxPoints }, (_, index) => coordinates[Math.round(index * step)]);
+}
+
+function extractRouteStepPoints(route) {
+  const steps = ((route && route.legs) || []).flatMap((leg) => leg.steps || []);
+  const points = [];
+
+  steps.forEach((step) => {
+    const coordinates = step.geometry && step.geometry.coordinates;
+    if (!Array.isArray(coordinates) || !coordinates.length) return;
+
+    const roadName = cleanRoadName(step.name) || cleanRoadName(step.ref) || "Ukendt vej";
+    coordinates.forEach(([lng, lat]) => {
+      points.push({
+        lat: roundCoord(lat),
+        lng: roundCoord(lng),
+        roadName,
+      });
+    });
+  });
+
+  return points;
+}
+
+function cleanRoadName(value) {
+  const name = String(value || "").trim();
+  return name && name !== "undefined" ? name : "";
+}
+
+function thinRoutePoints(points, maxPoints) {
+  if (points.length <= maxPoints) return points;
+  const step = (points.length - 1) / (maxPoints - 1);
+  return Array.from({ length: maxPoints }, (_, index) => points[Math.round(index * step)]);
 }
 
 function getAddressEndpoints(mode) {
