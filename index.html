@@ -1,10 +1,254 @@
 <!doctype html>
-<html>
+<html lang="da">
   <head>
-    <meta charset="utf-8">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0f766e" />
     <title>Trafikalarm</title>
+    <link rel="manifest" href="manifest.json" />
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <script type="module" src="./build-site.mjs"></script>
+    <svg class="icon-sprite" aria-hidden="true">
+      <symbol id="icon-bell" viewBox="0 0 24 24">
+        <path d="M6 9a6 6 0 1 1 12 0c0 7 3 6 3 8H3c0-2 3-1 3-8Z"></path>
+        <path d="M10 21h4"></path>
+      </symbol>
+      <symbol id="icon-route" viewBox="0 0 24 24">
+        <circle cx="6" cy="19" r="3"></circle>
+        <circle cx="18" cy="5" r="3"></circle>
+        <path d="M9 19h2a5 5 0 0 0 0-10H9a3 3 0 0 1 0-6h6"></path>
+      </symbol>
+      <symbol id="icon-play" viewBox="0 0 24 24">
+        <path d="m8 5 11 7-11 7Z"></path>
+      </symbol>
+      <symbol id="icon-pen" viewBox="0 0 24 24">
+        <path d="M12 20h9"></path>
+        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+      </symbol>
+      <symbol id="icon-trash" viewBox="0 0 24 24">
+        <path d="M3 6h18"></path>
+        <path d="M8 6V4h8v2"></path>
+        <path d="M6 6l1 15h10l1-15"></path>
+      </symbol>
+      <symbol id="icon-mail" viewBox="0 0 24 24">
+        <path d="M4 5h16v14H4Z"></path>
+        <path d="m4 7 8 6 8-6"></path>
+      </symbol>
+      <symbol id="icon-user" viewBox="0 0 24 24">
+        <circle cx="12" cy="8" r="4"></circle>
+        <path d="M4 21a8 8 0 0 1 16 0"></path>
+      </symbol>
+    </svg>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">TA</div>
+          <div>
+            <h1>Trafikalarm</h1>
+            <p>Rutevarsling til pendleren</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="system-status" id="systemStatus">Klar til tjek</div>
+          <button class="button secondary" id="requestNotifications" type="button">
+            <svg><use href="#icon-bell"></use></svg>
+            Aktiver push
+          </button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="auth-banner" id="authBanner">
+          <div>
+            <strong>Opret din pendlerprofil</strong>
+            <span>Prototypen gemmer dine valg lokalt i browseren.</span>
+          </div>
+          <form id="quickProfileForm" class="quick-profile">
+            <label>
+              Navn
+              <input id="quickName" name="quickName" autocomplete="name" placeholder="Dit navn" />
+            </label>
+            <label>
+              Mail
+              <input id="quickEmail" name="quickEmail" type="email" autocomplete="email" placeholder="navn@example.dk" />
+            </label>
+            <button class="button primary" type="submit">Gem profil</button>
+          </form>
+        </section>
+
+        <section class="panel profile-panel" aria-labelledby="profileTitle">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Profil</p>
+              <h2 id="profileTitle">Pendler og tider</h2>
+            </div>
+            <svg class="panel-icon"><use href="#icon-user"></use></svg>
+          </div>
+
+          <form id="profileForm" class="form-stack">
+            <div class="field-grid">
+              <label>
+                Navn
+                <input id="nameInput" name="name" autocomplete="name" placeholder="Dit navn" />
+              </label>
+              <label>
+                Mail til varsler
+                <input id="emailInput" name="email" type="email" autocomplete="email" placeholder="navn@example.dk" />
+              </label>
+            </div>
+
+            <div class="field-grid">
+              <label>
+                Hjem
+                <input id="homeInput" name="home" list="homeSuggestions" autocomplete="street-address" placeholder="fx Frederiksberg" />
+                <datalist id="homeSuggestions"></datalist>
+              </label>
+              <label>
+                Arbejde
+                <input id="workInput" name="work" list="workSuggestions" autocomplete="street-address" placeholder="fx Nordhavn" />
+                <datalist id="workSuggestions"></datalist>
+              </label>
+            </div>
+
+            <div class="section-label">Rute</div>
+            <div class="segmented" role="tablist" aria-label="Vælg rute">
+              <button class="segment active" id="modeWork" type="button" data-mode="work">Til arbejde</button>
+              <button class="segment" id="modeHome" type="button" data-mode="home">Hjem</button>
+            </div>
+
+            <div class="section-label">Ugedage</div>
+            <div class="days" id="daysGroup" aria-label="Vælg dage">
+              <label><input type="checkbox" value="mon" /> Man</label>
+              <label><input type="checkbox" value="tue" /> Tir</label>
+              <label><input type="checkbox" value="wed" /> Ons</label>
+              <label><input type="checkbox" value="thu" /> Tor</label>
+              <label><input type="checkbox" value="fri" /> Fre</label>
+              <label><input type="checkbox" value="sat" /> Lør</label>
+              <label><input type="checkbox" value="sun" /> Søn</label>
+            </div>
+
+            <div class="time-grid">
+              <label>
+                Morgen fra
+                <input id="departFrom" type="time" />
+              </label>
+              <label>
+                Morgen til
+                <input id="departTo" type="time" />
+              </label>
+              <label>
+                Hjem fra
+                <input id="returnFrom" type="time" />
+              </label>
+              <label>
+                Hjem til
+                <input id="returnTo" type="time" />
+              </label>
+            </div>
+
+            <div class="range-row">
+              <label for="leadInput">Varsl før afgang</label>
+              <input id="leadInput" type="range" min="5" max="60" step="5" />
+              <output id="leadOutput"></output>
+            </div>
+            <div class="range-row">
+              <label for="delayInput">Minimum forsinkelse</label>
+              <input id="delayInput" type="range" min="0" max="30" step="1" />
+              <output id="delayOutput"></output>
+            </div>
+
+            <div class="channel-row">
+              <label class="switch">
+                <input id="pushChannel" type="checkbox" />
+                <span></span>
+                Push
+              </label>
+              <label class="switch">
+                <input id="emailChannel" type="checkbox" />
+                <span></span>
+                Mail
+              </label>
+            </div>
+
+            <button class="button primary full" type="submit">Gem ændringer</button>
+          </form>
+        </section>
+
+        <section class="panel map-panel" aria-labelledby="mapTitle">
+          <div class="panel-heading map-heading">
+            <div>
+              <p class="eyebrow">Kort</p>
+              <h2 id="mapTitle">Tegn eller foreslå ruten</h2>
+            </div>
+            <div class="map-actions">
+              <button class="button secondary" id="sampleRoute" type="button">
+                <svg><use href="#icon-route"></use></svg>
+                Foreslå rute
+              </button>
+              <button class="button secondary" id="drawToggle" type="button" aria-pressed="true">
+                <svg><use href="#icon-pen"></use></svg>
+                Tegn
+              </button>
+              <button class="icon-button" id="clearRoute" type="button" aria-label="Ryd rute" title="Ryd rute">
+                <svg><use href="#icon-trash"></use></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="map-frame">
+            <div id="routeMap" role="application" aria-label="OpenStreetMap-kort til at plotte pendlerute"></div>
+            <div class="map-help" id="mapHelp">Klik på kortet for at sætte rutepunkter. Appen forsøger at finde vejnavnet for hvert punkt.</div>
+          </div>
+        </section>
+
+        <section class="panel monitor-panel" aria-labelledby="monitorTitle">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Overvågning</p>
+              <h2 id="monitorTitle">Alarmstatus</h2>
+            </div>
+            <button class="button primary" id="runCheck" type="button">
+              <svg><use href="#icon-play"></use></svg>
+              Kør tjek
+            </button>
+          </div>
+
+          <div class="status-tile" id="nextTripTile">
+            <span>Næste tjek</span>
+            <strong>Ikke beregnet endnu</strong>
+          </div>
+
+          <div class="info-block">
+            <div class="info-heading">
+              <h3>Genkendte veje</h3>
+              <span id="segmentCount">0</span>
+            </div>
+            <div class="chips" id="roadChips"></div>
+          </div>
+
+          <div class="info-block">
+            <div class="info-heading">
+              <h3>Aktuelle hændelser</h3>
+              <span id="matchCount">0</span>
+            </div>
+            <div class="event-list" id="eventList"></div>
+          </div>
+
+          <div class="info-block">
+            <div class="info-heading">
+              <h3>Beskeder</h3>
+              <button class="text-button" id="clearInbox" type="button">Ryd</button>
+            </div>
+            <div class="inbox" id="inbox"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="app.js" defer></script>
   </body>
 </html>
