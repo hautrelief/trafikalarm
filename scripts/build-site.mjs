@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 
 const root = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
@@ -56,4 +56,9 @@ await writeFile(join(dist, ".openai", "hosting.json"), await readFile(join(root,
 const screenshot = join(root, "public", "screenshot.jpeg");
 if (await stat(screenshot).then(() => true).catch(() => false)) {
   await copyFile(screenshot, join(dist, "server", "public", "screenshot.jpeg"));
+}
+
+const functionsDir = join(root, "functions");
+if (await stat(functionsDir).then((item) => item.isDirectory()).catch(() => false)) {
+  await cp(functionsDir, join(dist, "functions"), { recursive: true });
 }

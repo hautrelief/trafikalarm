@@ -881,16 +881,27 @@ function renderInbox() {
   state.inbox.slice(0, 6).forEach((message) => {
     const item = document.createElement("article");
     item.className = "message-item";
+    const meta = message.channel === "mail" ? mailStatusLabel(message.status) : "browser-push";
     item.innerHTML = `
       <div class="message-title">
         <strong>${message.title}</strong>
         ${message.channel === "mail" ? '<svg><use href="#icon-mail"></use></svg>' : '<svg><use href="#icon-bell"></use></svg>'}
       </div>
       <div>${message.body}</div>
-      <div class="message-meta">${message.time} · ${message.channel === "mail" ? "mailkladde" : "browser-push"}</div>
+      <div class="message-meta">${message.time} · ${meta}</div>
     `;
     elements.inbox.append(item);
   });
+}
+
+function mailStatusLabel(status) {
+  const labels = {
+    sender: "mail sendes",
+    sent: "mail sendt",
+    failed: "mail fejl",
+    "missing-recipient": "mangler mailadresse",
+  };
+  return labels[status] || "mailkladde";
 }
 
 function renderNextTrip() {
@@ -1150,7 +1161,7 @@ function evaluateRoute(routeItem) {
   };
 }
 
-function sendMessages(matches, bestResult = null) {
+async function sendMessages(matches, bestResult = null) {
   if (!matches.length) return;
 
   const strongest = [...matches].sort((a, b) => b.delay - a.delay)[0];
@@ -1175,16 +1186,51 @@ function sendMessages(matches, bestResult = null) {
   }
 
   if (state.schedule.channels.email) {
-    state.inbox.unshift({
+    const recipient = state.user.email;
+    const message = {
       title: `Mail: ${strongest.roadName}`,
-      body: `${body} Modtager: ${state.user.email || "ikke angivet"}.`,
+      body: `${body} Modtager: ${recipient || "ikke angivet"}.`,
       time,
       channel: "mail",
-    });
+      status: recipient ? "sender" : "missing-recipient",
+    };
+    state.inbox.unshift(message);
+    renderInbox();
+
+    if (recipient) {
+      try {
+        await sendAlertEmail({
+          to: recipient,
+          subject: title,
+          text: `${body}\n\nRute: ${getActiveRoute().name}\nRetning: ${routeLabel()}\nKilde: ${strongest.source}\nAktiv: ${strongest.window}`,
+        });
+        message.status = "sent";
+        message.title = `Mail sendt: ${strongest.roadName}`;
+      } catch (error) {
+        message.status = "failed";
+        message.body = `${body} Mail kunne ikke sendes endnu: ${error.message}`;
+      }
+    }
   }
 
   state.inbox = state.inbox.slice(0, 12);
   renderInbox();
+  saveState();
+}
+
+async function sendAlertEmail(payload) {
+  const response = await fetch("/api/send-alert-email", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.error || "Serveren afviste mailen.");
+  }
+  return result;
 }
 
 async function requestNotifications() {
