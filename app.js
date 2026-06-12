@@ -1,4 +1,4 @@
-const STORAGE_KEY = "trafikalarm.prototype.v3";
+const STORAGE_KEY = "trafikalarm.prototype.v4";
 const COPENHAGEN_CENTER = { lat: 55.6761, lng: 12.5683 };
 const TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse";
@@ -105,6 +105,10 @@ const defaultState = {
     workLocation: null,
   },
   routeMode: "work",
+  activeRoutes: {
+    work: "work-main",
+    home: "home-main",
+  },
   drawMode: true,
   schedule: {
     days: ["mon", "tue", "wed", "thu", "fri"],
@@ -120,13 +124,10 @@ const defaultState = {
     },
   },
   routes: {
-    work: {
-      points: [],
-    },
-    home: {
-      points: [],
-    },
+    work: [{ id: "work-main", name: "Primær rute", points: [] }],
+    home: [{ id: "home-main", name: "Primær rute", points: [] }],
   },
+  routeStatuses: {},
   inbox: [],
   lastMatches: [],
   lastCheck: null,
@@ -167,6 +168,10 @@ const elements = {
   pushChannel: document.querySelector("#pushChannel"),
   emailChannel: document.querySelector("#emailChannel"),
   modeButtons: document.querySelectorAll(".segment[data-mode]"),
+  routeTabs: document.querySelector("#routeTabs"),
+  addRoute: document.querySelector("#addRoute"),
+  routeNameInput: document.querySelector("#routeNameInput"),
+  deleteRoute: document.querySelector("#deleteRoute"),
   sampleRoute: document.querySelector("#sampleRoute"),
   drawToggle: document.querySelector("#drawToggle"),
   clearRoute: document.querySelector("#clearRoute"),
@@ -181,6 +186,8 @@ const elements = {
   matchCount: document.querySelector("#matchCount"),
   inbox: document.querySelector("#inbox"),
   nextTripTile: document.querySelector("#nextTripTile"),
+  routeOptions: document.querySelector("#routeOptions"),
+  routeCount: document.querySelector("#routeCount"),
   systemStatus: document.querySelector("#systemStatus"),
   toast: document.querySelector("#toast"),
 };
@@ -210,6 +217,7 @@ function mergeState(base, saved) {
     ...base,
     ...saved,
     user: { ...base.user, ...(saved.user || {}) },
+    activeRoutes: { ...base.activeRoutes, ...(saved.activeRoutes || {}) },
     schedule: {
       ...base.schedule,
       ...(saved.schedule || {}),
@@ -219,9 +227,10 @@ function mergeState(base, saved) {
       },
     },
     routes: {
-      work: { ...base.routes.work, ...((saved.routes && saved.routes.work) || {}) },
-      home: { ...base.routes.home, ...((saved.routes && saved.routes.home) || {}) },
+      work: saved.routes && saved.routes.work ? saved.routes.work : base.routes.work,
+      home: saved.routes && saved.routes.home ? saved.routes.home : base.routes.home,
     },
+    routeStatuses: { ...base.routeStatuses, ...(saved.routeStatuses || {}) },
   };
 }
 
@@ -230,15 +239,40 @@ function sanitizeState(nextState) {
   nextState.user.workLocation = sanitizeLocation(nextState.user.workLocation);
 
   ["work", "home"].forEach((mode) => {
-    nextState.routes[mode].points = (nextState.routes[mode].points || [])
+    nextState.routes[mode] = normalizeRouteList(nextState.routes[mode], mode);
+    const activeExists = nextState.routes[mode].some((route) => route.id === nextState.activeRoutes[mode]);
+    if (!activeExists) nextState.activeRoutes[mode] = nextState.routes[mode][0].id;
+  });
+  return nextState;
+}
+
+function normalizeRouteList(value, mode) {
+  const fallbackId = `${mode}-main`;
+  if (Array.isArray(value)) {
+    const routes = value.map((route, index) => normalizeRoute(route, `${mode}-${index + 1}`)).filter(Boolean);
+    return routes.length ? routes : [{ id: fallbackId, name: "Primær rute", points: [] }];
+  }
+
+  if (value && Array.isArray(value.points)) {
+    return [normalizeRoute({ id: fallbackId, name: "Primær rute", points: value.points }, fallbackId)];
+  }
+
+  return [{ id: fallbackId, name: "Primær rute", points: [] }];
+}
+
+function normalizeRoute(route, fallbackId) {
+  if (!route) return null;
+  return {
+    id: route.id || fallbackId,
+    name: route.name || "Primær rute",
+    points: (route.points || [])
       .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng))
       .map((point) => ({
         lat: roundCoord(point.lat),
         lng: roundCoord(point.lng),
         roadName: point.roadName || "Ukendt vej",
-      }));
-  });
-  return nextState;
+      })),
+  };
 }
 
 function sanitizeLocation(location) {
@@ -350,10 +384,58 @@ function bindEvents() {
   elements.modeButtons.forEach((button) => {
     button.addEventListener("click", () => {
       state.routeMode = button.dataset.mode;
+      state.lastMatches = getRouteStatus(state.activeRoutes[state.routeMode]).matches;
       renderAll();
       fitActiveRoute();
       saveState();
     });
+  });
+
+  elements.routeTabs.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-route-id]");
+    if (!button) return;
+    state.activeRoutes[state.routeMode] = button.dataset.routeId;
+    state.lastMatches = getRouteStatus(button.dataset.routeId).matches;
+    renderAll();
+    fitActiveRoute();
+    saveState();
+  });
+
+  elements.addRoute.addEventListener("click", () => {
+    const route = createEmptyRoute();
+    getRouteList().push(route);
+    state.activeRoutes[state.routeMode] = route.id;
+    invalidateActiveRouteStatus();
+    renderAll();
+    saveState();
+    showToast("Alternativ rute er tilføjet.");
+  });
+
+  elements.routeNameInput.addEventListener("input", () => {
+    const route = getActiveRoute();
+    route.name = elements.routeNameInput.value.trim() || "Unavngiven rute";
+    renderRouteTabs();
+    renderNextTrip();
+    renderRouteOptions();
+    saveState();
+  });
+
+  elements.deleteRoute.addEventListener("click", () => {
+    const routes = getRouteList();
+    if (routes.length <= 1) {
+      showToast("Du skal have mindst én rute i hver retning.");
+      return;
+    }
+    const activeId = state.activeRoutes[state.routeMode];
+    const nextRoutes = routes.filter((route) => route.id !== activeId);
+    state.routes[state.routeMode] = nextRoutes;
+    delete state.routeStatuses[activeId];
+    state.activeRoutes[state.routeMode] = nextRoutes[0].id;
+    state.lastMatches = getRouteStatus(nextRoutes[0].id).matches;
+    renderAll();
+    fitActiveRoute();
+    saveState();
+    showToast("Ruten er slettet.");
   });
 
   elements.daysGroup.querySelectorAll("input").forEach((input) => {
@@ -383,7 +465,7 @@ function bindEvents() {
 
   elements.sampleRoute.addEventListener("click", () => {
     setSampleRoute(state.routeMode);
-    state.lastMatches = [];
+    invalidateActiveRouteStatus();
     renderAll();
     fitActiveRoute();
     saveState();
@@ -398,7 +480,7 @@ function bindEvents() {
 
   elements.clearRoute.addEventListener("click", () => {
     getActiveRoute().points = [];
-    state.lastMatches = [];
+    invalidateActiveRouteStatus();
     renderAll();
     saveState();
     showToast("Ruten er ryddet.");
@@ -555,12 +637,14 @@ function renderAddressSuggestions(kind, suggestions) {
 
 function renderAll() {
   renderMode();
+  renderRouteTabs();
   renderAuth();
   renderMap();
   renderSummary();
   renderMatches(state.lastMatches || []);
   renderInbox();
   renderNextTrip();
+  renderRouteOptions();
   elements.leadOutput.textContent = `${state.schedule.lead} min`;
   elements.delayOutput.textContent = `${state.schedule.minDelay} min`;
   elements.mapHelp.textContent = state.drawMode
@@ -579,6 +663,26 @@ function renderMode() {
   elements.drawToggle.setAttribute("aria-pressed", String(state.drawMode));
   elements.drawToggle.classList.toggle("primary", state.drawMode);
   elements.drawToggle.classList.toggle("secondary", !state.drawMode);
+}
+
+function renderRouteTabs() {
+  const activeId = state.activeRoutes[state.routeMode];
+  elements.routeTabs.textContent = "";
+  getRouteList().forEach((route) => {
+    const status = getRouteStatus(route.id);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "route-tab";
+    button.dataset.routeId = route.id;
+    button.classList.toggle("active", route.id === activeId);
+    button.innerHTML = `
+      <span>${escapeHtml(route.name)}</span>
+      <small>${route.points.length} punkter${status.checked ? ` · ${status.matches.length} alarmer` : ""}</small>
+    `;
+    elements.routeTabs.append(button);
+  });
+  elements.routeNameInput.value = getActiveRoute().name;
+  elements.deleteRoute.disabled = getRouteList().length <= 1;
 }
 
 function renderMap() {
@@ -726,6 +830,44 @@ function renderMatches(matches) {
       <div class="event-meta">${event.source} · aktiv ${event.window}${distanceText} · matcher din ${routeLabel().toLowerCase()}</div>
     `;
     elements.eventList.append(item);
+  });
+}
+
+function renderRouteOptions() {
+  const routes = getRouteList();
+  elements.routeCount.textContent = String(routes.length);
+  elements.routeOptions.textContent = "";
+
+  if (!routes.length) {
+    elements.routeOptions.innerHTML = `<div class="empty">Ingen ruter gemt endnu.</div>`;
+    return;
+  }
+
+  routes.forEach((route) => {
+    const status = getRouteStatus(route.id);
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "route-option";
+    item.classList.toggle("active", route.id === state.activeRoutes[state.routeMode]);
+    item.dataset.routeId = route.id;
+    const label = status.checked
+      ? status.matches.length
+        ? `${status.matches.length} alarmer · ${status.delay} min`
+        : "Fri rute"
+      : "Ikke tjekket";
+    item.innerHTML = `
+      <strong>${escapeHtml(route.name)}</strong>
+      <span>${label}</span>
+      <small>${route.points.length} rutepunkter</small>
+    `;
+    item.addEventListener("click", () => {
+      state.activeRoutes[state.routeMode] = route.id;
+      state.lastMatches = status.matches;
+      renderAll();
+      fitActiveRoute();
+      saveState();
+    });
+    elements.routeOptions.append(item);
   });
 }
 
@@ -912,7 +1054,7 @@ async function addRoutePoint(latlng) {
     roadName: "Finder vejnavn...",
   };
   getActiveRoute().points.push(point);
-  state.lastMatches = [];
+  invalidateActiveRouteStatus();
   renderAll();
   saveState();
 
@@ -938,24 +1080,52 @@ function removeNearestRoutePoint(screenX, screenY) {
   if (nearest.index < 0 || nearest.distance > 28) return false;
 
   getActiveRoute().points.splice(nearest.index, 1);
-  state.lastMatches = [];
+  invalidateActiveRouteStatus();
   renderAll();
   saveState();
   return true;
 }
 
 function runTrafficCheck() {
-  const route = getValidRoutePoints();
-  if (route.length < 2) {
-    showToast("Tilføj mindst to rutepunkter før tjek.");
+  const routes = getRouteList();
+  const routeResults = routes.map((route) => evaluateRoute(route));
+  const validResults = routeResults.filter((result) => result.valid);
+
+  if (!validResults.length) {
+    showToast("Tilføj mindst to rutepunkter på en rute før tjek.");
     return;
+  }
+
+  routeResults.forEach((result) => {
+    state.routeStatuses[result.route.id] = {
+      checked: result.valid,
+      matches: result.matches,
+      delay: result.delay,
+      checkedAt: new Date().toISOString(),
+    };
+  });
+
+  state.lastMatches = getRouteStatus(state.activeRoutes[state.routeMode]).matches;
+  state.lastCheck = new Date().toISOString();
+  const activeMatches = state.lastMatches;
+  const best = [...validResults].sort((a, b) => a.delay - b.delay || a.matches.length - b.matches.length)[0];
+  elements.systemStatus.textContent = activeMatches.length ? `${activeMatches.length} relevant alarm` : "Ingen relevante alarmer";
+  renderAll();
+  sendMessages(activeMatches, best);
+  saveState();
+  showToast(best.matches.length ? `Bedste alternativ: ${best.route.name}` : `${best.route.name} ser fri ud.`);
+}
+
+function evaluateRoute(routeItem) {
+  const route = getValidRoutePoints(routeItem);
+  if (route.length < 2) {
+    return { route: routeItem, valid: false, matches: [], delay: 0 };
   }
 
   const activeWindow = state.routeMode === "work"
     ? [state.schedule.departFrom, state.schedule.departTo]
     : [state.schedule.returnFrom, state.schedule.returnTo];
-  const routeRoads = new Set(getRouteSegments().map((segment) => normalizeName(segment.name)));
-
+  const routeRoads = new Set(getRouteSegments(routeItem).map((segment) => normalizeName(segment.name)));
   const matches = simulatedEvents
     .map((event) => ({
       ...event,
@@ -972,21 +1142,23 @@ function runTrafficCheck() {
       );
     });
 
-  state.lastMatches = matches;
-  state.lastCheck = new Date().toISOString();
-  elements.systemStatus.textContent = matches.length ? `${matches.length} relevant alarm` : "Ingen relevante alarmer";
-  renderMatches(matches);
-  sendMessages(matches);
-  saveState();
-  showToast(matches.length ? "Tjekket fandt relevante trafikale problemer." : "Ruten ser fri ud i det valgte tidsrum.");
+  return {
+    route: routeItem,
+    valid: true,
+    matches,
+    delay: matches.reduce((sum, event) => sum + event.delay, 0),
+  };
 }
 
-function sendMessages(matches) {
+function sendMessages(matches, bestResult = null) {
   if (!matches.length) return;
 
   const strongest = [...matches].sort((a, b) => b.delay - a.delay)[0];
   const title = `Trafikalarm: ${strongest.roadName}`;
-  const body = `${strongest.type}: ${strongest.title}. Forvent cirka ${strongest.delay} min ekstra på ruten ${routeLabel().toLowerCase()}.`;
+  const alternative = bestResult && bestResult.route.id !== state.activeRoutes[state.routeMode]
+    ? ` Bedste alternativ lige nu: ${bestResult.route.name}.`
+    : "";
+  const body = `${strongest.type}: ${strongest.title}. Forvent cirka ${strongest.delay} min ekstra på ruten ${getActiveRoute().name}.${alternative}`;
   const time = new Intl.DateTimeFormat("da-DK", {
     hour: "2-digit",
     minute: "2-digit",
@@ -1032,12 +1204,13 @@ async function requestNotifications() {
 
 function setSampleRoute(mode) {
   const endpoints = getAddressEndpoints(mode);
+  const route = getActiveRoute();
   if (endpoints) {
-    state.routes[mode].points = endpoints;
+    route.points = endpoints;
     return;
   }
 
-  state.routes[mode].points = sampleRoutes[mode].map((point) => ({ ...point }));
+  route.points = sampleRoutes[mode].map((point) => ({ ...point }));
 }
 
 function getAddressEndpoints(mode) {
@@ -1060,16 +1233,40 @@ function getAddressEndpoints(mode) {
 }
 
 function getActiveRoute() {
-  return state.routes[state.routeMode];
+  const routes = getRouteList();
+  const activeId = state.activeRoutes[state.routeMode];
+  return routes.find((route) => route.id === activeId) || routes[0];
 }
 
-function getValidRoutePoints() {
-  return getActiveRoute().points.filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+function getRouteList(mode = state.routeMode) {
+  return state.routes[mode];
 }
 
-function getRouteSegments() {
+function createEmptyRoute() {
+  const label = routeLabel();
+  return {
+    id: `${state.routeMode}-${Date.now().toString(36)}`,
+    name: `${label} ${getRouteList().length + 1}`,
+    points: [],
+  };
+}
+
+function getRouteStatus(routeId) {
+  return state.routeStatuses[routeId] || { checked: false, matches: [], delay: 0 };
+}
+
+function invalidateActiveRouteStatus() {
+  delete state.routeStatuses[state.activeRoutes[state.routeMode]];
+  state.lastMatches = [];
+}
+
+function getValidRoutePoints(route = getActiveRoute()) {
+  return route.points.filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+}
+
+function getRouteSegments(route = getActiveRoute()) {
   const byName = new Map();
-  getValidRoutePoints().forEach((point) => {
+  getValidRoutePoints(route).forEach((point) => {
     const name = point.roadName || "Ukendt vej";
     const normalized = normalizeName(name);
     if (!normalized || normalized === normalizeName("Finder vejnavn...")) return;
@@ -1279,6 +1476,15 @@ function createSvg(tag, attributes = {}) {
 
 function roundCoord(value) {
   return Math.round(Number(value) * 1000000) / 1000000;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function showToast(message) {

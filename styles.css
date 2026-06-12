@@ -269,6 +269,49 @@ input:focus {
   font-weight: 750;
 }
 
+.route-manager {
+  display: grid;
+  gap: 10px;
+}
+
+.route-tabs {
+  display: grid;
+  gap: 7px;
+}
+
+.route-tab,
+.route-option {
+  background: #f2ece1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  display: grid;
+  gap: 3px;
+  min-height: 48px;
+  padding: 9px 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.route-tab.active,
+.route-option.active {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+}
+
+.route-tab span,
+.route-option strong {
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.route-tab small,
+.route-option small,
+.route-option span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .days {
   display: grid;
   gap: 7px;
@@ -440,6 +483,17 @@ output {
   color: var(--teal-dark);
   min-height: 30px;
   padding: 4px 0;
+}
+
+.text-button.danger {
+  color: var(--red);
+  justify-self: start;
+}
+
+.text-button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .map-panel {
@@ -739,6 +793,7 @@ output {
 }
 
 .chips,
+.route-options,
 .event-list,
 .inbox {
   display: grid;
