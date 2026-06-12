@@ -154,7 +154,7 @@ button {
   align-items: end;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(150px, 210px) minmax(180px, 260px) auto;
+  grid-template-columns: minmax(120px, 180px) minmax(180px, 240px) 90px auto auto auto auto;
 }
 
 .quick-profile label {
@@ -166,6 +166,15 @@ button {
   background: rgba(255, 253, 248, 0.95);
   border-color: transparent;
   margin-top: 4px;
+}
+
+.login-code-field input {
+  text-align: center;
+}
+
+.logout-button {
+  color: rgba(255, 253, 248, 0.82);
+  min-height: 40px;
 }
 
 .panel {

@@ -96,6 +96,11 @@ const sampleRoutes = {
 };
 
 const defaultState = {
+  cloud: {
+    sessionToken: "",
+    userId: "",
+    lastSync: null,
+  },
   user: {
     name: "",
     email: "",
@@ -149,6 +154,13 @@ const elements = {
   quickProfileForm: document.querySelector("#quickProfileForm"),
   quickName: document.querySelector("#quickName"),
   quickEmail: document.querySelector("#quickEmail"),
+  loginCode: document.querySelector("#loginCode"),
+  requestLoginCode: document.querySelector("#requestLoginCode"),
+  verifyLoginCode: document.querySelector("#verifyLoginCode"),
+  syncProfile: document.querySelector("#syncProfile"),
+  logoutProfile: document.querySelector("#logoutProfile"),
+  accountTitle: document.querySelector("#accountTitle"),
+  accountSubtitle: document.querySelector("#accountSubtitle"),
   profileForm: document.querySelector("#profileForm"),
   nameInput: document.querySelector("#nameInput"),
   emailInput: document.querySelector("#emailInput"),
@@ -231,6 +243,7 @@ function mergeState(base, saved) {
       home: saved.routes && saved.routes.home ? saved.routes.home : base.routes.home,
     },
     routeStatuses: { ...base.routeStatuses, ...(saved.routeStatuses || {}) },
+    cloud: { ...base.cloud, ...(saved.cloud || {}) },
   };
 }
 
@@ -358,15 +371,14 @@ function initMap() {
 }
 
 function bindEvents() {
-  elements.quickProfileForm.addEventListener("submit", (event) => {
+  elements.quickProfileForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    state.user.name = elements.quickName.value.trim();
-    state.user.email = elements.quickEmail.value.trim();
-    syncForm();
-    renderAll();
-    saveState();
-    showToast("Profilen er gemt lokalt.");
+    await syncCloudProfile();
   });
+
+  elements.requestLoginCode.addEventListener("click", requestLoginCode);
+  elements.verifyLoginCode.addEventListener("click", verifyLoginCode);
+  elements.logoutProfile.addEventListener("click", logoutProfile);
 
   elements.profileForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -507,6 +519,7 @@ function syncForm() {
   elements.workInput.value = state.user.work;
   elements.quickName.value = state.user.name;
   elements.quickEmail.value = state.user.email;
+  elements.loginCode.value = "";
   elements.departFrom.value = state.schedule.departFrom;
   elements.departTo.value = state.schedule.departTo;
   elements.returnFrom.value = state.schedule.returnFrom;
@@ -653,7 +666,17 @@ function renderAll() {
 }
 
 function renderAuth() {
-  elements.authBanner.classList.toggle("show", !state.user.email);
+  const isLoggedIn = Boolean(state.cloud.sessionToken);
+  elements.authBanner.classList.add("show");
+  elements.accountTitle.textContent = isLoggedIn ? "Profilen er koblet på skyen" : "Opret din pendlerprofil";
+  elements.accountSubtitle.textContent = isLoggedIn
+    ? `Logget ind som ${state.user.email || "pendler"}. Seneste synk: ${formatSyncTime(state.cloud.lastSync)}.`
+    : "Log ind med mailkode, så dine ruter kan gemmes og overvåges uden åben browser.";
+  elements.loginCode.disabled = isLoggedIn;
+  elements.verifyLoginCode.disabled = isLoggedIn;
+  elements.requestLoginCode.disabled = isLoggedIn;
+  elements.syncProfile.disabled = !isLoggedIn;
+  elements.logoutProfile.hidden = !isLoggedIn;
 }
 
 function renderMode() {
@@ -1231,6 +1254,140 @@ async function sendAlertEmail(payload) {
     throw new Error(result.error || "Serveren afviste mailen.");
   }
   return result;
+}
+
+async function requestLoginCode() {
+  const email = (elements.quickEmail.value || elements.emailInput.value).trim();
+  const name = (elements.quickName.value || elements.nameInput.value).trim();
+  if (!email) {
+    showToast("Skriv din mailadresse først.");
+    return;
+  }
+
+  state.user.email = email;
+  state.user.name = name;
+  syncForm();
+  saveState();
+
+  try {
+    await apiRequest("/api/request-login", {
+      method: "POST",
+      body: {
+        email,
+        name,
+      },
+    });
+    showToast("Login-koden er sendt til din mail.");
+  } catch (error) {
+    showToast(`Kunne ikke sende login-kode: ${error.message}`);
+  }
+}
+
+async function verifyLoginCode() {
+  const email = (elements.quickEmail.value || elements.emailInput.value).trim();
+  const code = elements.loginCode.value.trim();
+  if (!email || !code) {
+    showToast("Skriv mail og koden fra mailen.");
+    return;
+  }
+
+  try {
+    const result = await apiRequest("/api/verify-login", {
+      method: "POST",
+      body: { email, code },
+    });
+    state.cloud.sessionToken = result.sessionToken;
+    state.cloud.userId = result.user && result.user.id ? result.user.id : "";
+    if (result.profile) {
+      state = sanitizeState(mergeState(structuredClone(defaultState), {
+        ...result.profile,
+        cloud: state.cloud,
+      }));
+    } else {
+      state.user.email = email;
+    }
+    state.cloud.lastSync = new Date().toISOString();
+    syncForm();
+    renderAll();
+    saveState();
+    showToast(result.profile ? "Du er logget ind, og profilen er hentet." : "Du er logget ind. Gem dine ruter i skyen når de er klar.");
+  } catch (error) {
+    showToast(`Login lykkedes ikke: ${error.message}`);
+  }
+}
+
+async function syncCloudProfile() {
+  readForm();
+  if (!state.cloud.sessionToken) {
+    saveState();
+    renderAll();
+    showToast("Profilen er gemt lokalt. Send en login-kode for at gemme den i skyen.");
+    return;
+  }
+
+  try {
+    const result = await apiRequest("/api/profile", {
+      method: "PUT",
+      token: state.cloud.sessionToken,
+      body: {
+        profile: serializeProfileState(),
+      },
+    });
+    state.cloud.lastSync = result.savedAt || new Date().toISOString();
+    saveState();
+    renderAll();
+    showToast("Profil, ruter og alarmvalg er gemt i skyen.");
+  } catch (error) {
+    saveState();
+    renderAll();
+    showToast(`Gemt lokalt, men ikke i skyen: ${error.message}`);
+  }
+}
+
+function logoutProfile() {
+  state.cloud = structuredClone(defaultState.cloud);
+  saveState();
+  renderAll();
+  showToast("Du er logget ud på denne enhed.");
+}
+
+function serializeProfileState() {
+  return {
+    user: state.user,
+    routeMode: state.routeMode,
+    activeRoutes: state.activeRoutes,
+    schedule: state.schedule,
+    routes: state.routes,
+  };
+}
+
+async function apiRequest(path, options = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+    ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+  };
+  const response = await fetch(path, {
+    method: options.method || "GET",
+    headers,
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.error || "Serveren svarede ikke som forventet.");
+  }
+  return result;
+}
+
+function formatSyncTime(value) {
+  if (!value) return "ikke endnu";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "ikke endnu";
+  return new Intl.DateTimeFormat("da-DK", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 async function requestNotifications() {
