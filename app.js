@@ -685,6 +685,8 @@ function renderAll() {
 
 function renderAuth() {
   const isLoggedIn = Boolean(state.cloud.sessionToken);
+  document.body.classList.toggle("login-view", !isLoggedIn);
+  document.body.classList.toggle("app-view", isLoggedIn);
   elements.authBanner.hidden = isLoggedIn;
   elements.appWorkspace.hidden = !isLoggedIn;
   elements.requestNotifications.hidden = !isLoggedIn;
