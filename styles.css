@@ -122,39 +122,43 @@ button {
   max-width: 1500px;
 }
 
-.auth-banner {
-  align-items: center;
+.login-screen {
+  display: grid;
+  margin: 42px auto 0;
+  max-width: 760px;
+  min-height: calc(100vh - 180px);
+  place-items: center;
+}
+
+.login-card {
   background: #17312f;
   border-radius: 8px;
+  box-shadow: var(--shadow);
   color: #fffdf8;
-  display: none;
-  gap: 16px;
-  grid-column: 1 / -1;
-  justify-content: space-between;
-  padding: 14px;
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  width: min(100%, 720px);
 }
 
-.auth-banner.show {
-  display: flex;
-}
-
-.auth-banner strong {
+.login-card strong {
   display: block;
-  font-size: 16px;
+  font-size: 24px;
+  line-height: 1.2;
 }
 
-.auth-banner span {
+.login-card span {
   color: rgba(255, 253, 248, 0.78);
   display: block;
   font-size: 14px;
-  margin-top: 2px;
+  margin-top: 6px;
 }
 
 .quick-profile {
   align-items: end;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(120px, 180px) minmax(180px, 240px) 90px auto auto auto auto;
+  grid-template-columns: minmax(150px, 1fr) minmax(210px, 1.3fr) 90px auto auto;
 }
 
 .quick-profile label {
@@ -947,7 +951,7 @@ output {
   }
 
   .topbar,
-  .auth-banner {
+  .login-card {
     align-items: stretch;
     flex-direction: column;
   }

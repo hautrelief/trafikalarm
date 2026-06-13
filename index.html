@@ -51,16 +51,17 @@
           </div>
         </div>
         <div class="topbar-actions">
-          <div class="system-status" id="systemStatus">Klar til tjek</div>
-          <button class="button secondary" id="requestNotifications" type="button">
+          <div class="system-status" id="systemStatus" hidden>Klar til tjek</div>
+          <button class="button secondary" id="requestNotifications" type="button" hidden>
             <svg><use href="#icon-bell"></use></svg>
             Aktiver push
           </button>
+          <button class="button secondary" id="topLogoutProfile" type="button" hidden>Log ud</button>
         </div>
       </header>
 
-      <main class="workspace">
-        <section class="auth-banner" id="authBanner">
+      <section class="login-screen" id="authBanner">
+        <div class="login-card">
           <div>
             <strong id="accountTitle">Opret din pendlerprofil</strong>
             <span id="accountSubtitle">Log ind med mailkode, så dine ruter kan gemmes og overvåges uden åben browser.</span>
@@ -80,10 +81,12 @@
             </label>
             <button class="button primary" id="requestLoginCode" type="button">Send kode</button>
             <button class="button secondary" id="verifyLoginCode" type="button">Log ind</button>
-            <button class="button secondary" id="syncProfile" type="submit">Gem i skyen</button>
             <button class="text-button logout-button" id="logoutProfile" type="button">Log ud</button>
           </form>
-        </section>
+        </div>
+      </section>
+
+      <main class="workspace" id="appWorkspace" hidden>
 
         <section class="panel profile-panel" aria-labelledby="profileTitle">
           <div class="panel-heading">

@@ -149,17 +149,20 @@ const addressSuggestions = {
   home: [],
   work: [],
 };
+let cloudSyncTimer = null;
+let isCloudSyncing = false;
 
 const elements = {
   authBanner: document.querySelector("#authBanner"),
+  appWorkspace: document.querySelector("#appWorkspace"),
   quickProfileForm: document.querySelector("#quickProfileForm"),
   quickName: document.querySelector("#quickName"),
   quickEmail: document.querySelector("#quickEmail"),
   loginCode: document.querySelector("#loginCode"),
   requestLoginCode: document.querySelector("#requestLoginCode"),
   verifyLoginCode: document.querySelector("#verifyLoginCode"),
-  syncProfile: document.querySelector("#syncProfile"),
   logoutProfile: document.querySelector("#logoutProfile"),
+  topLogoutProfile: document.querySelector("#topLogoutProfile"),
   accountTitle: document.querySelector("#accountTitle"),
   accountSubtitle: document.querySelector("#accountSubtitle"),
   profileForm: document.querySelector("#profileForm"),
@@ -299,8 +302,9 @@ function sanitizeLocation(location) {
   };
 }
 
-function saveState() {
+function saveState(options = {}) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (!options.localOnly) scheduleCloudSync();
 }
 
 function initMap() {
@@ -374,12 +378,17 @@ function initMap() {
 function bindEvents() {
   elements.quickProfileForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    await syncCloudProfile();
+    if (elements.loginCode.value.trim()) {
+      await verifyLoginCode();
+    } else {
+      await requestLoginCode();
+    }
   });
 
   elements.requestLoginCode.addEventListener("click", requestLoginCode);
   elements.verifyLoginCode.addEventListener("click", verifyLoginCode);
   elements.logoutProfile.addEventListener("click", logoutProfile);
+  elements.topLogoutProfile.addEventListener("click", logoutProfile);
 
   elements.profileForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -412,11 +421,8 @@ function bindEvents() {
     renderAll();
     fitActiveRoute();
     saveState();
-    elements.sampleRoute.disabled = false;
-    if (message) {
-      showToast(message);
-      return;
-    }
+    return;
+    showToast(message || "Ruten er foreslået og klar til redigering.");
   });
 
   elements.addRoute.addEventListener("click", () => {
@@ -490,6 +496,9 @@ function bindEvents() {
     renderAll();
     fitActiveRoute();
     saveState();
+    elements.sampleRoute.disabled = false;
+    showToast(message || "Ruten er foreslået og klar til redigering.");
+    return;
     showToast("Ruten er foreslået på OpenStreetMap og klar til redigering.");
   });
 
@@ -676,7 +685,11 @@ function renderAll() {
 
 function renderAuth() {
   const isLoggedIn = Boolean(state.cloud.sessionToken);
-  elements.authBanner.classList.add("show");
+  elements.authBanner.hidden = isLoggedIn;
+  elements.appWorkspace.hidden = !isLoggedIn;
+  elements.requestNotifications.hidden = !isLoggedIn;
+  elements.topLogoutProfile.hidden = !isLoggedIn;
+  elements.systemStatus.hidden = !isLoggedIn;
   elements.accountTitle.textContent = isLoggedIn ? "Profilen er koblet på skyen" : "Opret din pendlerprofil";
   elements.accountSubtitle.textContent = isLoggedIn
     ? `Logget ind som ${state.user.email || "pendler"}. Seneste synk: ${formatSyncTime(state.cloud.lastSync)}.`
@@ -684,7 +697,6 @@ function renderAuth() {
   elements.loginCode.disabled = isLoggedIn;
   elements.verifyLoginCode.disabled = isLoggedIn;
   elements.requestLoginCode.disabled = isLoggedIn;
-  elements.syncProfile.disabled = !isLoggedIn;
   elements.logoutProfile.hidden = !isLoggedIn;
 }
 
@@ -1316,24 +1328,37 @@ async function verifyLoginCode() {
       state.user.email = email;
     }
     state.cloud.lastSync = new Date().toISOString();
+    const message = result.profile ? "Du er logget ind, og profilen er hentet." : "Du er logget ind. Dine ændringer gemmes automatisk.";
     syncForm();
     renderAll();
-    saveState();
+    saveState({ localOnly: true });
+    elements.sampleRoute.disabled = false;
+    showToast(message || "Ruten er foreslået og klar til redigering.");
+    return;
     showToast(result.profile ? "Du er logget ind, og profilen er hentet." : "Du er logget ind. Gem dine ruter i skyen når de er klar.");
   } catch (error) {
     showToast(`Login lykkedes ikke: ${error.message}`);
   }
 }
 
-async function syncCloudProfile() {
+function scheduleCloudSync() {
+  if (!state.cloud.sessionToken || isCloudSyncing) return;
+  clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = setTimeout(() => {
+    syncCloudProfile({ silent: true });
+  }, 1200);
+}
+
+async function syncCloudProfile(options = {}) {
   readForm();
   if (!state.cloud.sessionToken) {
-    saveState();
+    saveState({ localOnly: true });
     renderAll();
-    showToast("Profilen er gemt lokalt. Send en login-kode for at gemme den i skyen.");
+    if (!options.silent) showToast("Profilen er gemt lokalt. Send en login-kode for at gemme den i skyen.");
     return;
   }
 
+  isCloudSyncing = true;
   try {
     const result = await apiRequest("/api/profile", {
       method: "PUT",
@@ -1343,13 +1368,15 @@ async function syncCloudProfile() {
       },
     });
     state.cloud.lastSync = result.savedAt || new Date().toISOString();
-    saveState();
+    saveState({ localOnly: true });
     renderAll();
-    showToast("Profil, ruter og alarmvalg er gemt i skyen.");
+    if (!options.silent) showToast("Profil, ruter og alarmvalg er gemt i skyen.");
   } catch (error) {
-    saveState();
+    saveState({ localOnly: true });
     renderAll();
     showToast(`Gemt lokalt, men ikke i skyen: ${error.message}`);
+  } finally {
+    isCloudSyncing = false;
   }
 }
 

@@ -5,4 +5,5 @@ dist/
 desktop-preview.png
 mobile-preview.png
 node_modules/
+.wrangler/
 .DS_Store
