@@ -1,0 +1,9 @@
+name = "trafikalarm-alert-cron"
+main = "workers/alert-cron.js"
+compatibility_date = "2026-06-13"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+PAGES_ALERT_CHECK_URL = "https://roadrunner-284.pages.dev/api/run-alert-check"

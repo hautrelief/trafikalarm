@@ -55,3 +55,46 @@ X-Cron-Secret: værdien-fra-CRON_SECRET
 ```
 
 På sigt bør dette kaldes af en Cloudflare Worker Cron Trigger hvert 5. minut i pendler-tidsrum.
+
+## 6. Automatisk tjek hvert 5. minut
+
+Projektet har nu en lille Worker i `workers/alert-cron.js`, som kalder Pages-endpointet automatisk.
+
+Den bruger konfigurationen i `wrangler.alert-cron.toml`:
+
+```text
+crons = ["*/5 * * * *"]
+```
+
+Det betyder, at Cloudflare forsøger at køre alarmtjekket hvert 5. minut. Selve appen filtrerer bagefter på brugerens ugedage og tidspunkter, så en bruger kun får mail, hvis vedkommendes rute og tidsvindue er relevant.
+
+Workerens navn er:
+
+```text
+trafikalarm-alert-cron
+```
+
+Den kalder:
+
+```text
+https://roadrunner-284.pages.dev/api/run-alert-check
+```
+
+### Vigtigt om secret
+
+Sæt den samme `CRON_SECRET` to steder:
+
+1. På Pages-projektet `roadrunner`.
+2. På Worker-projektet `trafikalarm-alert-cron`.
+
+Pages bruger den til at beskytte `/api/run-alert-check`, og Worker bruger den til at bevise, at kaldet kommer fra din scheduler.
+
+### Test
+
+Når Workeren er deployet, kan den testes med:
+
+```text
+https://trafikalarm-alert-cron.<dit-worker-subdomain>.workers.dev/run-now
+```
+
+Svaret bør indeholde `ok: true` og et resultat med antal profiler tjekket og mails sendt.
