@@ -137,6 +137,7 @@ body.app-view .login-screen {
 
 .login-screen {
   display: grid;
+  gap: 14px;
   margin: 42px auto 0;
   max-width: 760px;
   min-height: calc(100vh - 150px);
@@ -199,6 +200,41 @@ body.app-view .login-screen {
 .logout-button {
   color: rgba(255, 253, 248, 0.82);
   min-height: 40px;
+}
+
+.support-box {
+  align-items: center;
+  background: rgba(255, 253, 248, 0.72);
+  border: 1px solid rgba(185, 173, 152, 0.42);
+  border-radius: 8px;
+  color: var(--muted);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 78px 1fr;
+  padding: 10px 12px;
+  width: min(100%, 720px);
+}
+
+.support-box img {
+  background: #fff;
+  border: 1px solid rgba(185, 173, 152, 0.35);
+  border-radius: 7px;
+  display: block;
+  height: 78px;
+  object-fit: contain;
+  padding: 4px;
+  width: 78px;
+}
+
+.support-box p {
+  font-size: 13px;
+  line-height: 1.4;
+  margin: 0 0 4px;
+}
+
+.support-box strong {
+  color: var(--ink);
+  font-size: 13px;
 }
 
 .panel {
@@ -984,6 +1020,15 @@ output {
 
   .topbar-actions {
     display: grid;
+  }
+
+  .support-box {
+    grid-template-columns: 64px 1fr;
+  }
+
+  .support-box img {
+    height: 64px;
+    width: 64px;
   }
 
   .workspace {
