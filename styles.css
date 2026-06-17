@@ -87,16 +87,19 @@ body.login-view .brand {
 
 .brand-mark {
   align-items: center;
-  background: var(--ink);
+  background: rgba(23, 32, 31, 0.96);
   border-radius: 8px;
   color: #fffdf8;
   display: grid;
-  font-size: 17px;
-  font-weight: 800;
   height: 48px;
-  letter-spacing: 0;
   place-items: center;
   width: 48px;
+}
+
+.brand-mark img {
+  display: block;
+  height: 36px;
+  width: 36px;
 }
 
 .brand h1,
@@ -139,10 +142,6 @@ body.login-view .brand {
   grid-template-columns: minmax(270px, 340px) minmax(420px, 1fr) minmax(300px, 380px);
   margin: 0 auto;
   max-width: 1500px;
-}
-
-body.login-view .brand-mark {
-  display: none;
 }
 
 body.login-view .workspace,

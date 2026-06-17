@@ -188,7 +188,6 @@ const elements = {
   leadOutput: document.querySelector("#leadOutput"),
   delayInput: document.querySelector("#delayInput"),
   delayOutput: document.querySelector("#delayOutput"),
-  pushChannel: document.querySelector("#pushChannel"),
   emailChannel: document.querySelector("#emailChannel"),
   modeButtons: document.querySelectorAll(".segment[data-mode]"),
   routeTabs: document.querySelector("#routeTabs"),
@@ -198,7 +197,6 @@ const elements = {
   sampleRoute: document.querySelector("#sampleRoute"),
   drawToggle: document.querySelector("#drawToggle"),
   clearRoute: document.querySelector("#clearRoute"),
-  requestNotifications: document.querySelector("#requestNotifications"),
   runCheck: document.querySelector("#runCheck"),
   clearInbox: document.querySelector("#clearInbox"),
   routeMap: document.querySelector("#routeMap"),
@@ -488,7 +486,6 @@ function bindEvents() {
     elements.returnTo,
     elements.leadInput,
     elements.delayInput,
-    elements.pushChannel,
     elements.emailChannel,
   ].forEach((input) => {
     input.addEventListener("input", () => {
@@ -532,8 +529,6 @@ function bindEvents() {
     runTrafficCheck();
   });
 
-  elements.requestNotifications.addEventListener("click", requestNotifications);
-
   elements.clearInbox.addEventListener("click", () => {
     state.inbox = [];
     saveState();
@@ -555,7 +550,6 @@ function syncForm() {
   elements.returnTo.value = state.schedule.returnTo;
   elements.leadInput.value = state.schedule.lead;
   elements.delayInput.value = state.schedule.minDelay;
-  elements.pushChannel.checked = state.schedule.channels.push;
   elements.emailChannel.checked = state.schedule.channels.email;
 
   elements.daysGroup.querySelectorAll("input").forEach((input) => {
@@ -576,7 +570,7 @@ function readForm() {
   state.schedule.returnTo = elements.returnTo.value || defaultState.schedule.returnTo;
   state.schedule.lead = Number(elements.leadInput.value);
   state.schedule.minDelay = Number(elements.delayInput.value);
-  state.schedule.channels.push = elements.pushChannel.checked;
+  state.schedule.channels.push = false;
   state.schedule.channels.email = elements.emailChannel.checked;
   state.schedule.days = Array.from(elements.daysGroup.querySelectorAll("input:checked")).map((input) => input.value);
 }
@@ -700,7 +694,6 @@ function renderAuth() {
   document.body.classList.toggle("app-view", isLoggedIn);
   elements.authBanner.hidden = isLoggedIn;
   elements.appWorkspace.hidden = !isLoggedIn;
-  elements.requestNotifications.hidden = !isLoggedIn;
   elements.topLogoutProfile.hidden = !isLoggedIn;
   elements.systemStatus.hidden = !isLoggedIn;
   elements.accountTitle.textContent = isLoggedIn ? "Profilen er koblet på skyen" : "Opret din pendlerprofil";
@@ -1282,16 +1275,6 @@ async function sendMessages(matches, bestResult = null) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date());
-
-  if (state.schedule.channels.push) {
-    state.inbox.unshift({ title, body, time, channel: "push" });
-    if ("Notification" in window && Notification.permission === "granted") {
-      new Notification(title, {
-        body,
-        tag: strongest.id,
-      });
-    }
-  }
 
   if (state.schedule.channels.email) {
     const recipient = state.user.email;

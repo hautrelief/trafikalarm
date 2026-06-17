@@ -44,6 +44,9 @@
     <div class="app-shell">
       <header class="topbar">
         <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <img src="icon.svg" alt="" />
+          </div>
           <div>
             <h1>Rutealarm</h1>
             <p>Rutevarsling til pendleren</p>
@@ -51,10 +54,6 @@
         </div>
         <div class="topbar-actions">
           <div class="system-status" id="systemStatus" hidden>Klar til tjek</div>
-          <button class="button secondary" id="requestNotifications" type="button" hidden>
-            <svg><use href="#icon-bell"></use></svg>
-            Aktiver push
-          </button>
           <button class="button secondary" id="topLogoutProfile" type="button" hidden>Log ud</button>
         </div>
       </header>
@@ -186,11 +185,6 @@
             </div>
 
             <div class="channel-row">
-              <label class="switch">
-                <input id="pushChannel" type="checkbox" />
-                <span></span>
-                Push
-              </label>
               <label class="switch">
                 <input id="emailChannel" type="checkbox" />
                 <span></span>
