@@ -1,5 +1,11 @@
-const CACHE_NAME = "trafikalarm-prototype-v7";
-const ASSETS = ["./public/mobilepay-qr.png", "./public/login-background.jpg", "./icon.svg"];
+const CACHE_NAME = "trafikalarm-prototype-v8";
+const ASSETS = [
+  "./public/mobilepay-qr.png",
+  "./public/login-background.jpg",
+  "./public/app-icon-96.png",
+  "./public/app-icon-192.png",
+  "./public/app-icon-512.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));

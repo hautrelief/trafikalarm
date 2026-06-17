@@ -9,7 +9,9 @@ const assets = [
   "app.js",
   "manifest.json",
   "service-worker.js",
-  "icon.svg",
+  "public/app-icon-96.png",
+  "public/app-icon-192.png",
+  "public/app-icon-512.png",
   "public/mobilepay-qr.png",
   "public/login-background.jpg",
 ];
@@ -46,9 +48,10 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname.endsWith("/") && url.pathname !== "/" ? url.pathname.slice(0, -1) : url.pathname;
     const asset = ASSETS[path] || ASSETS[path + ".html"] || ASSETS["/index.html"];
+    const noStore = ["/", "/index.html", "/app.js", "/styles.css", "/manifest.json", "/service-worker.js"].includes(path);
     const headers = new Headers({
       "content-type": asset.type,
-      "cache-control": path === "/index.html" || path === "/" ? "no-store" : "public, max-age=3600",
+      "cache-control": noStore ? "no-store" : "public, max-age=3600",
     });
     const body = Uint8Array.from(atob(asset.body), (char) => char.charCodeAt(0));
     return new Response(body, { headers });
@@ -72,6 +75,13 @@ if (await stat(mobilepayQr).then(() => true).catch(() => false)) {
 const loginBackground = join(root, "public", "login-background.jpg");
 if (await stat(loginBackground).then(() => true).catch(() => false)) {
   await copyFile(loginBackground, join(dist, "server", "public", "login-background.jpg"));
+}
+
+for (const size of [96, 192, 512]) {
+  const icon = join(root, "public", `app-icon-${size}.png`);
+  if (await stat(icon).then(() => true).catch(() => false)) {
+    await copyFile(icon, join(dist, "server", "public", `app-icon-${size}.png`));
+  }
 }
 
 const functionsDir = join(root, "functions");
