@@ -39,8 +39,8 @@ export async function onRequestPost({ request, env }) {
   try {
     await sendEmail(env, {
       to: email,
-      subject: "Din login-kode til Trafikalarm",
-      text: `Din Trafikalarm-kode:\n\n${code}\n\nKoden virker i 10 minutter. Hvis du ikke bad om den, kan du bare ignorere mailen.`,
+      subject: "Din login-kode til Rutealarm",
+      text: `Din Rutealarm-kode:\n\n${code}\n\nKoden virker i 10 minutter. Hvis du ikke bad om den, kan du bare ignorere mailen.`,
     });
   } catch (error) {
     return json({ error: error.message || "Login-koden kunne ikke sendes via mail." }, 500);

@@ -5,7 +5,7 @@ export async function sendEmail(env, payload) {
     throw new Error("RESEND_API_KEY mangler i Cloudflare.");
   }
 
-  const from = env.ALERT_FROM || "Trafikalarm <onboarding@resend.dev>";
+  const from = env.ALERT_FROM || "Rutealarm <noreply@rutevarsling.dk>";
   const response = await fetch(RESEND_ENDPOINT, {
     method: "POST",
     headers: {

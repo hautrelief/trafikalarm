@@ -42,7 +42,7 @@ export async function onRequestPost({ request, env }) {
       try {
         await sendEmail(env, {
           to: email,
-          subject: `Trafikalarm: ${strongest.roadName}`,
+          subject: `Rutealarm: ${strongest.roadName}`,
           text: makeAlertText(profile, alert, strongest),
         });
         sent += 1;
@@ -72,5 +72,5 @@ Forventet ekstra tid: ca. ${strongest.delay} minutter
 Kilde: ${strongest.source}
 Aktiv periode: ${strongest.window}${alternative}
 
-Du kan ændre eller slå dine alarmer fra ved at logge ind i Trafikalarm.`;
+Du kan ændre eller slå dine alarmer fra ved at logge ind i Rutealarm.`;
 }
