@@ -198,6 +198,17 @@ body.app-view .login-screen {
   min-height: 20px;
 }
 
+.login-resend-link {
+  color: rgba(255, 253, 248, 0.86);
+  font-size: 13px;
+  grid-column: 1 / -1;
+  justify-self: start;
+  min-height: 0;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .quick-profile label {
   color: rgba(255, 253, 248, 0.82);
   font-size: 12px;

@@ -166,6 +166,7 @@ const elements = {
   loginCodeField: document.querySelector("#loginCodeField"),
   loginCode: document.querySelector("#loginCode"),
   requestLoginCode: document.querySelector("#requestLoginCode"),
+  resendLoginCode: document.querySelector("#resendLoginCode"),
   verifyLoginCode: document.querySelector("#verifyLoginCode"),
   loginStatus: document.querySelector("#loginStatus"),
   logoutProfile: document.querySelector("#logoutProfile"),
@@ -394,6 +395,7 @@ function bindEvents() {
   });
 
   elements.requestLoginCode.addEventListener("click", requestLoginCode);
+  elements.resendLoginCode.addEventListener("click", requestLoginCode);
   elements.verifyLoginCode.addEventListener("click", verifyLoginCode);
   elements.quickEmail.addEventListener("input", resetLoginRequestState);
   elements.logoutProfile.addEventListener("click", logoutProfile);
@@ -721,6 +723,8 @@ function renderLoginRequestState(isLoggedIn = Boolean(state.cloud.sessionToken))
   if (isLoggedIn) {
     elements.requestLoginCode.hidden = true;
     elements.requestLoginCode.disabled = true;
+    elements.resendLoginCode.hidden = true;
+    elements.resendLoginCode.disabled = true;
     elements.loginCodeField.hidden = true;
     elements.verifyLoginCode.hidden = true;
     elements.loginStatus.textContent = "";
@@ -734,15 +738,16 @@ function renderLoginRequestState(isLoggedIn = Boolean(state.cloud.sessionToken))
   const waiting = sameEmail && waitSeconds > 0;
   const hasRequestedCode = Boolean(sameEmail && requestedAt);
 
-  elements.requestLoginCode.hidden = waiting;
+  elements.requestLoginCode.hidden = hasRequestedCode;
   elements.requestLoginCode.disabled = false;
-  elements.requestLoginCode.textContent = sameEmail ? "Send ny kode" : "Send kode";
+  elements.resendLoginCode.hidden = !sameEmail || waiting;
+  elements.resendLoginCode.disabled = false;
   elements.loginCodeField.hidden = !hasRequestedCode;
   elements.verifyLoginCode.hidden = !hasRequestedCode;
   elements.loginStatus.textContent = waiting
     ? "Check din e-mail og kig evt. i din spam folder, hvis ikke du modtager den i indbakken inden længe."
     : sameEmail
-      ? "Ønsker du at anmode om en ny kode?"
+      ? "Check din e-mail og kig evt. i din spam folder, hvis ikke du modtager den i indbakken inden længe."
       : "";
 
   if (waiting) {
