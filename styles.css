@@ -210,7 +210,7 @@ body.app-view .login-screen {
   color: var(--muted);
   display: grid;
   gap: 12px;
-  grid-template-columns: 78px 1fr;
+  grid-template-columns: 128px 1fr;
   padding: 10px 12px;
   width: min(100%, 720px);
 }
@@ -220,10 +220,10 @@ body.app-view .login-screen {
   border: 1px solid rgba(185, 173, 152, 0.35);
   border-radius: 7px;
   display: block;
-  height: 78px;
+  height: 128px;
   object-fit: contain;
   padding: 4px;
-  width: 78px;
+  width: 128px;
 }
 
 .support-box p {
@@ -1023,12 +1023,12 @@ output {
   }
 
   .support-box {
-    grid-template-columns: 64px 1fr;
+    grid-template-columns: 104px 1fr;
   }
 
   .support-box img {
-    height: 64px;
-    width: 64px;
+    height: 104px;
+    width: 104px;
   }
 
   .workspace {
