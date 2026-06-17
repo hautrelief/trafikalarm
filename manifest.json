@@ -1,6 +1,6 @@
 {
-  "name": "Trafikalarm",
-  "short_name": "Trafikalarm",
+  "name": "Rutealarm",
+  "short_name": "Rutealarm",
   "description": "Pendlerovervågning med ruter, tidsvinduer og trafikvarsler.",
   "start_url": "./index.html",
   "display": "standalone",

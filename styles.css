@@ -77,6 +77,14 @@ button {
   gap: 12px;
 }
 
+body.login-view .brand {
+  background: rgba(255, 253, 248, 0.72);
+  border: 1px solid rgba(185, 173, 152, 0.42);
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(24, 32, 31, 0.08);
+  padding: 10px 12px;
+}
+
 .brand-mark {
   align-items: center;
   background: var(--ink);
@@ -131,6 +139,10 @@ button {
   grid-template-columns: minmax(270px, 340px) minmax(420px, 1fr) minmax(300px, 380px);
   margin: 0 auto;
   max-width: 1500px;
+}
+
+body.login-view .brand-mark {
+  display: none;
 }
 
 body.login-view .workspace,
