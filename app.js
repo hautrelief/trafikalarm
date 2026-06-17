@@ -1924,8 +1924,11 @@ function showToast(message) {
 
 function registerServiceWorker() {
   if (location.protocol.startsWith("http") && "serviceWorker" in navigator) {
-    navigator.serviceWorker.register("service-worker.js").catch(() => {
-      // The app still works without offline caching.
-    });
+    navigator.serviceWorker
+      .register("service-worker.js")
+      .then((registration) => registration.update())
+      .catch(() => {
+        // The app still works without offline caching.
+      });
   }
 }
