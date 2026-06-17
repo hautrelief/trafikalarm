@@ -102,6 +102,10 @@ const defaultState = {
     userId: "",
     lastSync: null,
   },
+  login: {
+    codeRequestedAt: null,
+    codeEmail: "",
+  },
   user: {
     name: "",
     email: "",
@@ -151,6 +155,7 @@ const addressSuggestions = {
 };
 let cloudSyncTimer = null;
 let isCloudSyncing = false;
+let loginResendTimer = null;
 
 const elements = {
   authBanner: document.querySelector("#authBanner"),
@@ -161,6 +166,7 @@ const elements = {
   loginCode: document.querySelector("#loginCode"),
   requestLoginCode: document.querySelector("#requestLoginCode"),
   verifyLoginCode: document.querySelector("#verifyLoginCode"),
+  loginStatus: document.querySelector("#loginStatus"),
   logoutProfile: document.querySelector("#logoutProfile"),
   topLogoutProfile: document.querySelector("#topLogoutProfile"),
   accountTitle: document.querySelector("#accountTitle"),
@@ -248,6 +254,7 @@ function mergeState(base, saved) {
     },
     routeStatuses: { ...base.routeStatuses, ...(saved.routeStatuses || {}) },
     cloud: { ...base.cloud, ...(saved.cloud || {}) },
+    login: { ...base.login, ...(saved.login || {}) },
   };
 }
 
@@ -380,13 +387,16 @@ function bindEvents() {
     event.preventDefault();
     if (elements.loginCode.value.trim()) {
       await verifyLoginCode();
-    } else {
+    } else if (!isWaitingForLoginCode()) {
       await requestLoginCode();
+    } else {
+      showToast("Koden er allerede sendt. Vent lidt, før du sender en ny.");
     }
   });
 
   elements.requestLoginCode.addEventListener("click", requestLoginCode);
   elements.verifyLoginCode.addEventListener("click", verifyLoginCode);
+  elements.quickEmail.addEventListener("input", resetLoginRequestState);
   elements.logoutProfile.addEventListener("click", logoutProfile);
   elements.topLogoutProfile.addEventListener("click", logoutProfile);
 
@@ -698,8 +708,50 @@ function renderAuth() {
     : "Log ind med mailkode, så dine ruter kan gemmes og overvåges uden åben browser.";
   elements.loginCode.disabled = isLoggedIn;
   elements.verifyLoginCode.disabled = isLoggedIn;
-  elements.requestLoginCode.disabled = isLoggedIn;
+  renderLoginRequestState(isLoggedIn);
   elements.logoutProfile.hidden = !isLoggedIn;
+}
+
+function isWaitingForLoginCode() {
+  const requestedAt = state.login.codeRequestedAt ? new Date(state.login.codeRequestedAt).getTime() : 0;
+  const sameEmail = state.login.codeEmail && state.login.codeEmail === elements.quickEmail.value.trim().toLowerCase();
+  return Boolean(sameEmail && requestedAt && Math.floor((Date.now() - requestedAt) / 1000) < 60);
+}
+
+function renderLoginRequestState(isLoggedIn = Boolean(state.cloud.sessionToken)) {
+  clearTimeout(loginResendTimer);
+  if (isLoggedIn) {
+    elements.requestLoginCode.hidden = true;
+    elements.requestLoginCode.disabled = true;
+    elements.loginStatus.textContent = "";
+    return;
+  }
+
+  const requestedAt = state.login.codeRequestedAt ? new Date(state.login.codeRequestedAt).getTime() : 0;
+  const sameEmail = state.login.codeEmail && state.login.codeEmail === elements.quickEmail.value.trim().toLowerCase();
+  const elapsedSeconds = requestedAt ? Math.floor((Date.now() - requestedAt) / 1000) : Number.POSITIVE_INFINITY;
+  const waitSeconds = Math.max(0, 60 - elapsedSeconds);
+  const waiting = sameEmail && waitSeconds > 0;
+
+  elements.requestLoginCode.hidden = waiting;
+  elements.requestLoginCode.disabled = false;
+  elements.requestLoginCode.textContent = sameEmail ? "Send ny kode" : "Send kode";
+  elements.loginStatus.textContent = waiting
+    ? `Koden er sendt. Vent ${waitSeconds} sekunder før du sender en ny.`
+    : sameEmail
+      ? "Hvis mailen ikke kom frem, kan du sende en ny kode."
+      : "";
+
+  if (waiting) {
+    loginResendTimer = setTimeout(renderAuth, 1000);
+  }
+}
+
+function resetLoginRequestState() {
+  state.login.codeRequestedAt = null;
+  state.login.codeEmail = "";
+  renderAuth();
+  saveState({ localOnly: true });
 }
 
 function renderMode() {
@@ -1144,7 +1196,7 @@ function removeNearestRoutePoint(screenX, screenY) {
 }
 
 function runTrafficCheck() {
-  const routes = getRouteList();
+  const routes = [getActiveRoute()];
   const routeResults = routes.map((route) => evaluateRoute(route));
   const validResults = routeResults.filter((result) => result.valid);
 
@@ -1300,6 +1352,10 @@ async function requestLoginCode() {
         name,
       },
     });
+    state.login.codeRequestedAt = new Date().toISOString();
+    state.login.codeEmail = email.toLowerCase();
+    saveState({ localOnly: true });
+    renderAuth();
     showToast("Login-koden er sendt til din mail.");
   } catch (error) {
     showToast(`Kunne ikke sende login-kode: ${error.message}`);
@@ -1329,6 +1385,8 @@ async function verifyLoginCode() {
     } else {
       state.user.email = email;
     }
+    state.login.codeRequestedAt = null;
+    state.login.codeEmail = "";
     state.cloud.lastSync = new Date().toISOString();
     const message = result.profile ? "Du er logget ind, og profilen er hentet." : "Du er logget ind. Dine ændringer gemmes automatisk.";
     syncForm();
@@ -1384,6 +1442,7 @@ async function syncCloudProfile(options = {}) {
 
 function logoutProfile() {
   state.cloud = structuredClone(defaultState.cloud);
+  state.login = structuredClone(defaultState.login);
   saveState();
   renderAll();
   showToast("Du er logget ud på denne enhed.");
