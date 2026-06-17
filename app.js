@@ -389,7 +389,7 @@ function bindEvents() {
     } else if (!isWaitingForLoginCode()) {
       await requestLoginCode();
     } else {
-      showToast("Koden er allerede sendt. Vent lidt, før du sender en ny.");
+      showToast("Check din e-mail og kig evt. i din spam folder.");
     }
   });
 
@@ -740,13 +740,13 @@ function renderLoginRequestState(isLoggedIn = Boolean(state.cloud.sessionToken))
   elements.loginCodeField.hidden = !hasRequestedCode;
   elements.verifyLoginCode.hidden = !hasRequestedCode;
   elements.loginStatus.textContent = waiting
-    ? `Koden er sendt. Vent ${waitSeconds} sekunder før du sender en ny.`
+    ? "Check din e-mail og kig evt. i din spam folder, hvis ikke du modtager den i indbakken inden længe."
     : sameEmail
-      ? "Hvis mailen ikke kom frem, kan du sende en ny kode."
+      ? "Ønsker du at anmode om en ny kode?"
       : "";
 
   if (waiting) {
-    loginResendTimer = setTimeout(renderAuth, 1000);
+    loginResendTimer = setTimeout(renderAuth, waitSeconds * 1000);
   }
 }
 
@@ -1350,7 +1350,7 @@ async function requestLoginCode() {
     saveState({ localOnly: true });
     renderAuth();
     elements.loginCode.focus();
-    showToast("Login-koden er sendt til din mail.");
+    showToast("Check din e-mail og kig evt. i din spam folder.");
   } catch (error) {
     showToast(`Kunne ikke sende login-kode: ${error.message}`);
   }
