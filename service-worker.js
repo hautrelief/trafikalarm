@@ -1,4 +1,4 @@
-const CACHE_NAME = "trafikalarm-prototype-v5";
+const CACHE_NAME = "trafikalarm-prototype-v6";
 const ASSETS = [
   "./",
   "./index.html",
@@ -7,6 +7,7 @@ const ASSETS = [
   "./manifest.json",
   "./icon.svg",
   "./public/mobilepay-qr.png",
+  "./public/login-background.jpg",
 ];
 
 self.addEventListener("install", (event) => {

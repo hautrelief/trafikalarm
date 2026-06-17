@@ -11,6 +11,7 @@ const assets = [
   "service-worker.js",
   "icon.svg",
   "public/mobilepay-qr.png",
+  "public/login-background.jpg",
 ];
 
 const mimeTypes = {
@@ -20,6 +21,8 @@ const mimeTypes = {
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml; charset=utf-8",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
 };
 
 await rm(dist, { recursive: true, force: true });
@@ -64,4 +67,9 @@ if (await stat(screenshot).then(() => true).catch(() => false)) {
 const mobilepayQr = join(root, "public", "mobilepay-qr.png");
 if (await stat(mobilepayQr).then(() => true).catch(() => false)) {
   await copyFile(mobilepayQr, join(dist, "server", "public", "mobilepay-qr.png"));
+}
+
+const loginBackground = join(root, "public", "login-background.jpg");
+if (await stat(loginBackground).then(() => true).catch(() => false)) {
+  await copyFile(loginBackground, join(dist, "server", "public", "login-background.jpg"));
 }

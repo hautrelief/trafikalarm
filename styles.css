@@ -37,6 +37,13 @@ body {
   color: var(--ink);
 }
 
+body.login-view {
+  background:
+    linear-gradient(rgba(244, 241, 233, 0.14), rgba(244, 241, 233, 0.22)),
+    url("public/login-background.jpg") center / cover no-repeat fixed,
+    var(--bg);
+}
+
 button,
 input {
   font: inherit;
