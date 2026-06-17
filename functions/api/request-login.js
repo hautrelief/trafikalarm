@@ -30,7 +30,8 @@ export async function onRequestPost({ request, env }) {
     .first();
 
   const code = makeLoginCode();
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  // Give email delivery enough buffer while the user-facing promise stays 10 minutes.
+  const expiresAt = new Date(Date.now() + 20 * 60 * 1000).toISOString();
   await env.DB.prepare("INSERT INTO login_codes (id, user_id, code, expires_at, created_at) VALUES (?, ?, ?, ?, ?)")
     .bind(crypto.randomUUID(), user.id, code, expiresAt, now)
     .run();
