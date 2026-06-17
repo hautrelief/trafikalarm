@@ -72,12 +72,12 @@
               Mail
               <input id="quickEmail" name="quickEmail" type="email" autocomplete="email" placeholder="navn@example.dk" />
             </label>
-            <label class="login-code-field">
+            <label class="login-code-field" id="loginCodeField" hidden>
               Kode
               <input id="loginCode" name="loginCode" inputmode="numeric" autocomplete="one-time-code" placeholder="6 cifre" />
             </label>
             <button class="button primary" id="requestLoginCode" type="button">Send kode</button>
-            <button class="button secondary" id="verifyLoginCode" type="button">Log ind</button>
+            <button class="button secondary" id="verifyLoginCode" type="button" hidden>Log ind</button>
             <button class="text-button logout-button" id="logoutProfile" type="button">Log ud</button>
             <div class="login-status" id="loginStatus" role="status" aria-live="polite"></div>
           </form>

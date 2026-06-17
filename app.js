@@ -163,6 +163,7 @@ const elements = {
   quickProfileForm: document.querySelector("#quickProfileForm"),
   quickName: document.querySelector("#quickName"),
   quickEmail: document.querySelector("#quickEmail"),
+  loginCodeField: document.querySelector("#loginCodeField"),
   loginCode: document.querySelector("#loginCode"),
   requestLoginCode: document.querySelector("#requestLoginCode"),
   verifyLoginCode: document.querySelector("#verifyLoginCode"),
@@ -710,6 +711,10 @@ function renderAuth() {
   elements.verifyLoginCode.disabled = isLoggedIn;
   renderLoginRequestState(isLoggedIn);
   elements.logoutProfile.hidden = !isLoggedIn;
+  if (!isLoggedIn) {
+    elements.accountTitle.textContent = "Pendlerprofil";
+    elements.accountSubtitle.textContent = "Login med din e-mail. Indtast din e-mail og klik send kode. Systemet sender dig en kode, som du skal taste ind i kode feltet før du klikker på Log ind.";
+  }
 }
 
 function isWaitingForLoginCode() {
@@ -723,6 +728,8 @@ function renderLoginRequestState(isLoggedIn = Boolean(state.cloud.sessionToken))
   if (isLoggedIn) {
     elements.requestLoginCode.hidden = true;
     elements.requestLoginCode.disabled = true;
+    elements.loginCodeField.hidden = true;
+    elements.verifyLoginCode.hidden = true;
     elements.loginStatus.textContent = "";
     return;
   }
@@ -732,10 +739,13 @@ function renderLoginRequestState(isLoggedIn = Boolean(state.cloud.sessionToken))
   const elapsedSeconds = requestedAt ? Math.floor((Date.now() - requestedAt) / 1000) : Number.POSITIVE_INFINITY;
   const waitSeconds = Math.max(0, 60 - elapsedSeconds);
   const waiting = sameEmail && waitSeconds > 0;
+  const hasRequestedCode = Boolean(sameEmail && requestedAt);
 
   elements.requestLoginCode.hidden = waiting;
   elements.requestLoginCode.disabled = false;
   elements.requestLoginCode.textContent = sameEmail ? "Send ny kode" : "Send kode";
+  elements.loginCodeField.hidden = !hasRequestedCode;
+  elements.verifyLoginCode.hidden = !hasRequestedCode;
   elements.loginStatus.textContent = waiting
     ? `Koden er sendt. Vent ${waitSeconds} sekunder før du sender en ny.`
     : sameEmail
@@ -1356,6 +1366,7 @@ async function requestLoginCode() {
     state.login.codeEmail = email.toLowerCase();
     saveState({ localOnly: true });
     renderAuth();
+    elements.loginCode.focus();
     showToast("Login-koden er sendt til din mail.");
   } catch (error) {
     showToast(`Kunne ikke sende login-kode: ${error.message}`);
