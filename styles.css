@@ -222,7 +222,7 @@ body.app-view .login-screen {
   display: block;
   height: 128px;
   object-fit: contain;
-  padding: 4px;
+  padding: 0;
   width: 128px;
 }
 
