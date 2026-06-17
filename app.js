@@ -686,7 +686,7 @@ function renderAll() {
   elements.leadOutput.textContent = `${state.schedule.lead} min`;
   elements.delayOutput.textContent = `${state.schedule.minDelay} min`;
   elements.mapHelp.textContent = state.drawMode
-    ? "Klik for rutepunkt. Højreklik tæt på et punkt for at fjerne det. Piletaster flytter kortet, + og - zoomer."
+    ? "Klik for rutepunkt. På mobil: tryk på et punkt for at fjerne det. På computer: højreklik tæt på et punkt. Piletaster flytter kortet, + og - zoomer."
     : "Tegning er slået fra. Piletaster flytter kortet, + og - zoomer.";
 }
 
@@ -1058,7 +1058,13 @@ function handleMapPointerUp(event) {
 
   if (!wasDragging && state.drawMode) {
     const rect = elements.routeMap.getBoundingClientRect();
-    addRoutePoint(screenToLatLng(event.clientX - rect.left, event.clientY - rect.top));
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    if ((event.pointerType === "touch" || event.pointerType === "pen") && removeNearestRoutePoint(x, y, 38)) {
+      showToast("Rutepunktet er fjernet.");
+      return;
+    }
+    addRoutePoint(screenToLatLng(x, y));
   }
 }
 
@@ -1181,7 +1187,7 @@ async function addRoutePoint(latlng) {
   showToast(`Rutepunkt tilføjet: ${point.roadName}`);
 }
 
-function removeNearestRoutePoint(screenX, screenY) {
+function removeNearestRoutePoint(screenX, screenY, maxDistance = 28) {
   const points = getValidRoutePoints();
   if (!points.length) return false;
 
@@ -1194,7 +1200,7 @@ function removeNearestRoutePoint(screenX, screenY) {
     { index: -1, distance: Number.POSITIVE_INFINITY }
   );
 
-  if (nearest.index < 0 || nearest.distance > 28) return false;
+  if (nearest.index < 0 || nearest.distance > maxDistance) return false;
 
   getActiveRoute().points.splice(nearest.index, 1);
   invalidateActiveRouteStatus();
