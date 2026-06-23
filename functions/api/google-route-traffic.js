@@ -9,6 +9,14 @@ export async function onRequestOptions() {
 }
 
 export async function onRequestPost({ request, env }) {
+  try {
+    return await handleRequest(request, env);
+  } catch (error) {
+    return json({ error: `Google-rejsetid fejlede: ${error.message || "Ukendt serverfejl."}` }, 500);
+  }
+}
+
+async function handleRequest(request, env) {
   if (!env.GOOGLE_MAPS_API_KEY) {
     return json({ ok: false, disabled: true, message: "GOOGLE_MAPS_API_KEY mangler i Cloudflare." });
   }
@@ -74,17 +82,6 @@ async function enforceGoogleRateLimit(request, env) {
     return json({ error: "D1-databasen mangler, så Google-kald er midlertidigt slået fra." }, 503);
   }
 
-  await env.DB.prepare(
-    `CREATE TABLE IF NOT EXISTS google_rate_limits (
-      bucket TEXT NOT NULL,
-      key TEXT NOT NULL,
-      count INTEGER NOT NULL DEFAULT 0,
-      reset_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      PRIMARY KEY (bucket, key)
-    )`
-  ).run();
-
   const now = new Date();
   const dailyLimit = positiveInt(env.GOOGLE_DAILY_LIMIT, DEFAULT_DAILY_LIMIT);
   const minuteLimit = positiveInt(env.GOOGLE_MINUTE_LIMIT, DEFAULT_MINUTE_LIMIT);
@@ -109,33 +106,37 @@ async function enforceGoogleRateLimit(request, env) {
 }
 
 async function incrementLimit(env, options) {
-  const nowIso = new Date().toISOString();
-  const existing = await env.DB.prepare(
-    "SELECT count, reset_at FROM google_rate_limits WHERE bucket = ? AND key = ?"
-  )
-    .bind(options.bucket, options.key)
-    .first();
+  try {
+    const nowIso = new Date().toISOString();
+    const existing = await env.DB.prepare(
+      "SELECT count, reset_at FROM google_rate_limits WHERE bucket = ? AND key = ?"
+    )
+      .bind(options.bucket, options.key)
+      .first();
 
-  const expired = !existing || new Date(existing.reset_at).getTime() <= Date.now();
-  const count = expired ? 1 : Number(existing.count || 0) + 1;
-  const resetAt = expired ? options.resetAt.toISOString() : existing.reset_at;
+    const expired = !existing || new Date(existing.reset_at).getTime() <= Date.now();
+    const count = expired ? 1 : Number(existing.count || 0) + 1;
+    const resetAt = expired ? options.resetAt.toISOString() : existing.reset_at;
 
-  if (count > options.limit) {
-    return json({ error: options.error, retryAfter: resetAt }, 429);
+    if (count > options.limit) {
+      return json({ error: options.error, retryAfter: resetAt }, 429);
+    }
+
+    await env.DB.prepare(
+      `INSERT INTO google_rate_limits (bucket, key, count, reset_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(bucket, key) DO UPDATE SET
+         count = excluded.count,
+         reset_at = excluded.reset_at,
+         updated_at = excluded.updated_at`
+    )
+      .bind(options.bucket, options.key, count, resetAt, nowIso)
+      .run();
+
+    return null;
+  } catch (error) {
+    return json({ error: `Google rate limit-tabellen mangler eller fejlede. Kør migrations/0002_google_rate_limits.sql i D1. (${error.message})` }, 500);
   }
-
-  await env.DB.prepare(
-    `INSERT INTO google_rate_limits (bucket, key, count, reset_at, updated_at)
-     VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(bucket, key) DO UPDATE SET
-       count = excluded.count,
-       reset_at = excluded.reset_at,
-       updated_at = excluded.updated_at`
-  )
-    .bind(options.bucket, options.key, count, resetAt, nowIso)
-    .run();
-
-  return null;
 }
 
 function positiveInt(value, fallback) {

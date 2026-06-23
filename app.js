@@ -1587,11 +1587,20 @@ async function apiRequest(path, options = {}) {
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
-  const result = await response.json().catch(() => ({}));
+  const responseText = await response.text();
+  const result = responseText ? safeJson(responseText) : {};
   if (!response.ok) {
-    throw new Error(result.error || "Serveren svarede ikke som forventet.");
+    throw new Error(result.error || result.message || responseText.slice(0, 180) || `Serveren svarede med HTTP ${response.status}.`);
   }
   return result;
+}
+
+function safeJson(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
 }
 
 function formatSyncTime(value) {
