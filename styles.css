@@ -896,6 +896,21 @@ output {
   gap: 8px;
 }
 
+.google-traffic {
+  color: var(--muted);
+  display: grid;
+  gap: 4px;
+}
+
+.google-traffic strong {
+  color: var(--ink);
+}
+
+.google-traffic span,
+.google-traffic small {
+  display: block;
+}
+
 .chip {
   align-items: center;
   background: #f2ece1;

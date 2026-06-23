@@ -138,6 +138,7 @@ const defaultState = {
     home: [{ id: "home-main", name: "Primær rute", points: [] }],
   },
   routeStatuses: {},
+  googleTraffic: null,
   inbox: [],
   lastMatches: [],
   lastCheck: null,
@@ -206,6 +207,8 @@ const elements = {
   segmentCount: document.querySelector("#segmentCount"),
   eventList: document.querySelector("#eventList"),
   matchCount: document.querySelector("#matchCount"),
+  googleTraffic: document.querySelector("#googleTraffic"),
+  googleTrafficBadge: document.querySelector("#googleTrafficBadge"),
   inbox: document.querySelector("#inbox"),
   nextTripTile: document.querySelector("#nextTripTile"),
   routeOptions: document.querySelector("#routeOptions"),
@@ -526,9 +529,9 @@ function bindEvents() {
     showToast("Ruten er ryddet.");
   });
 
-  elements.runCheck.addEventListener("click", () => {
+  elements.runCheck.addEventListener("click", async () => {
     readForm();
-    runTrafficCheck();
+    await runTrafficCheck();
   });
 
   elements.clearInbox.addEventListener("click", () => {
@@ -680,6 +683,7 @@ function renderAll() {
   renderMap();
   renderSummary();
   renderMatches(state.lastMatches || []);
+  renderGoogleTraffic();
   renderInbox();
   renderNextTrip();
   renderRouteOptions();
@@ -937,6 +941,50 @@ function renderMatches(matches) {
     `;
     elements.eventList.append(item);
   });
+}
+
+function renderGoogleTraffic() {
+  if (!elements.googleTraffic || !elements.googleTrafficBadge) return;
+  const traffic = state.googleTraffic;
+  if (!traffic) {
+    elements.googleTrafficBadge.textContent = "Fra";
+    elements.googleTraffic.innerHTML = `<div class="empty">Ikke tjekket endnu.</div>`;
+    return;
+  }
+
+  if (traffic.status === "loading") {
+    elements.googleTrafficBadge.textContent = "Tjekker";
+    elements.googleTraffic.innerHTML = `<div class="empty">Henter rejsetid fra Google Maps Platform...</div>`;
+    return;
+  }
+
+  if (traffic.status === "disabled") {
+    elements.googleTrafficBadge.textContent = "Fra";
+    elements.googleTraffic.innerHTML = `<div class="empty">${traffic.message}</div>`;
+    return;
+  }
+
+  if (traffic.status === "error") {
+    elements.googleTrafficBadge.textContent = "Fejl";
+    elements.googleTraffic.innerHTML = `<div class="empty">${traffic.message}</div>`;
+    return;
+  }
+
+  const delayMinutes = Math.round((traffic.delaySeconds || 0) / 60);
+  const durationMinutes = Math.round((traffic.durationSeconds || 0) / 60);
+  const distanceKm = ((traffic.distanceMeters || 0) / 1000).toFixed(1).replace(".", ",");
+  const levelText = traffic.trafficLevel === "heavy"
+    ? "Unormalt meget trafik"
+    : traffic.trafficLevel === "moderate"
+      ? "Mere trafik end normalt"
+      : "Normal trafik";
+
+  elements.googleTrafficBadge.textContent = traffic.trafficLevel === "heavy" ? "Høj" : traffic.trafficLevel === "moderate" ? "Moderat" : "Normal";
+  elements.googleTraffic.innerHTML = `
+    <strong>${levelText}</strong>
+    <span>${durationMinutes} min rejsetid · ${distanceKm} km</span>
+    <small>${delayMinutes ? `Ca. ${delayMinutes} min ekstra trafikforsinkelse` : "Ingen tydelig ekstra forsinkelse"} · Data fra Google Maps Platform</small>
+  `;
 }
 
 function renderRouteOptions() {
@@ -1209,7 +1257,7 @@ function removeNearestRoutePoint(screenX, screenY, maxDistance = 28) {
   return true;
 }
 
-function runTrafficCheck() {
+async function runTrafficCheck() {
   const routes = [getActiveRoute()];
   const routeResults = routes.map((route) => evaluateRoute(route));
   const validResults = routeResults.filter((result) => result.valid);
@@ -1233,7 +1281,10 @@ function runTrafficCheck() {
   const activeMatches = state.lastMatches;
   const best = [...validResults].sort((a, b) => a.delay - b.delay || a.matches.length - b.matches.length)[0];
   elements.systemStatus.textContent = activeMatches.length ? `${activeMatches.length} relevant alarm` : "Ingen relevante alarmer";
+  state.googleTraffic = { status: "loading" };
   renderAll();
+  await updateGoogleTraffic(validResults[0].route);
+  renderGoogleTraffic();
   sendMessages(activeMatches, best);
   saveState();
   showToast(best.matches.length ? `Bedste alternativ: ${best.route.name}` : `${best.route.name} ser fri ud.`);
@@ -1333,6 +1384,69 @@ async function sendAlertEmail(payload) {
     throw new Error(result.error || "Serveren afviste mailen.");
   }
   return result;
+}
+
+async function updateGoogleTraffic(route) {
+  const points = getValidRoutePoints(route);
+  if (points.length < 2) {
+    state.googleTraffic = { status: "error", message: "Ruten skal have mindst to punkter." };
+    return;
+  }
+
+  try {
+    const result = await apiRequest("/api/google-route-traffic", {
+      method: "POST",
+      body: {
+        points,
+        departureTime: nextDepartureTime().toISOString(),
+      },
+    });
+
+    if (result.disabled) {
+      state.googleTraffic = {
+        status: "disabled",
+        message: "Google Maps API er ikke slået til endnu.",
+      };
+      return;
+    }
+
+    state.googleTraffic = {
+      status: "ready",
+      provider: result.provider,
+      departureTime: result.departureTime,
+      distanceMeters: result.distanceMeters,
+      durationSeconds: result.durationSeconds,
+      staticDurationSeconds: result.staticDurationSeconds,
+      delaySeconds: result.delaySeconds,
+      trafficLevel: result.trafficLevel,
+    };
+  } catch (error) {
+    state.googleTraffic = {
+      status: "error",
+      message: `Kunne ikke hente Google-rejsetid: ${error.message}`,
+    };
+  }
+}
+
+function nextDepartureTime() {
+  const days = state.schedule.days && state.schedule.days.length ? state.schedule.days : defaultState.schedule.days;
+  const time = state.routeMode === "work" ? state.schedule.departFrom : state.schedule.returnFrom;
+  const now = new Date();
+
+  for (let offset = 0; offset < 14; offset += 1) {
+    const candidate = new Date(now);
+    candidate.setDate(now.getDate() + offset);
+    candidate.setHours(...timeParts(time), 0, 0);
+    const day = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][candidate.getDay()];
+    if (days.includes(day) && candidate.getTime() > now.getTime()) return candidate;
+  }
+
+  return new Date(now.getTime() + 5 * 60 * 1000);
+}
+
+function timeParts(value) {
+  const [hours, minutes] = String(value || "00:00").split(":").map(Number);
+  return [Number.isFinite(hours) ? hours : 0, Number.isFinite(minutes) ? minutes : 0];
 }
 
 async function requestLoginCode() {
