@@ -3,12 +3,7 @@ const DEFAULT_RADIUS_METERS = 600;
 export async function fetchTrafficEvents(env) {
   const url = env.TRAFFIC_EVENTS_URL || env.VD_TRAFFIC_EVENTS_URL;
   if (!url) {
-    return {
-      configured: false,
-      source: env.TRAFFIC_EVENTS_SOURCE || "Officiel trafikdata",
-      events: [],
-      message: "Officiel trafikkilde er ikke sat op endnu.",
-    };
+    return fetchStoredTrafficEvents(env);
   }
 
   const source = env.TRAFFIC_EVENTS_SOURCE || "Officiel trafikdata";
@@ -31,6 +26,44 @@ export async function fetchTrafficEvents(env) {
     source,
     events: normalizeTrafficEvents(payload, source),
   };
+}
+
+export async function fetchStoredTrafficEvents(env) {
+  const source = env.TRAFFIC_EVENTS_SOURCE || "Dataudveksleren";
+  if (!env.DB) {
+    return {
+      configured: false,
+      source,
+      events: [],
+      message: "Trafikdatabasen er ikke sat op endnu.",
+    };
+  }
+
+  try {
+    const rows = await env.DB.prepare(
+      `SELECT event_json
+       FROM traffic_events
+       WHERE expires_at > ?
+       ORDER BY updated_at DESC
+       LIMIT 500`
+    )
+      .bind(new Date().toISOString())
+      .all();
+
+    return {
+      configured: true,
+      source,
+      events: (rows.results || []).map((row) => safeJson(row.event_json)).filter(Boolean),
+      message: rows.results && rows.results.length ? "" : "Der er endnu ikke modtaget trafikhændelser fra Dataudveksleren.",
+    };
+  } catch (error) {
+    return {
+      configured: false,
+      source,
+      events: [],
+      message: "Trafikhændelsestabellen mangler. Kør migrations/0003_traffic_events.sql i D1.",
+    };
+  }
 }
 
 export function normalizeTrafficEvents(payload, defaultSource = "Officiel trafikdata") {

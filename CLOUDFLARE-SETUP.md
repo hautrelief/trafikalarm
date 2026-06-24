@@ -109,3 +109,14 @@ På Pages-projektet under **Settings** -> **Variables and secrets** kan du tilføj
 - `TRAFFIC_EVENTS_SOURCE` som almindelig variabel, fx `Vejdirektoratet`, så kilden står pænt i appen og i mails.
 
 Hvis `TRAFFIC_EVENTS_URL` ikke er sat, bruger appen stadig Google-rejsetid, men den viser ikke falske hændelser på ruten.
+
+### Dataudveksleren via AMQP
+
+Hvis Dataudveksleren leverer datasættet via AMQP, skal der bruges en lille bridge i stedet for en direkte `TRAFFIC_EVENTS_URL`.
+
+1. Kør `migrations/0003_traffic_events.sql` i D1.
+2. Sæt `TRAFFIC_INGEST_SECRET` på Pages-projektet som secret.
+3. Sæt `TRAFFIC_EVENTS_SOURCE` til `Dataudveksleren`.
+4. Kør bridgen i `dataudveksleren-bridge/` på en server eller service, der kan holde en AMQP-forbindelse åben.
+
+Bridgen sender hændelser ind i `/api/ingest-traffic-events`, og appen læser derefter de seneste hændelser fra D1.
