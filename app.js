@@ -10,74 +10,6 @@ const MAX_ZOOM = 18;
 
 const roadNameCache = new Map();
 
-const simulatedEvents = [
-  {
-    id: "event-borups-crash",
-    lat: 55.69423,
-    lng: 12.53556,
-    roadName: "Borups Alle",
-    type: "Uheld",
-    severity: "high",
-    delay: 18,
-    title: "Uheld blokerer højre spor",
-    window: "07:05-09:20",
-    source: "Vejdirektoratet",
-    radiusMeters: 550,
-  },
-  {
-    id: "event-tagens-roadwork",
-    lat: 55.70545,
-    lng: 12.55021,
-    roadName: "Tagensvej",
-    type: "Vejarbejde",
-    severity: "medium",
-    delay: 9,
-    title: "Akut vejarbejde ved kryds",
-    window: "06:30-10:00",
-    source: "Dataudveksleren",
-    radiusMeters: 450,
-  },
-  {
-    id: "event-strandboulevard-queue",
-    lat: 55.70483,
-    lng: 12.58794,
-    roadName: "Strandboulevarden",
-    type: "Kø",
-    severity: "medium",
-    delay: 12,
-    title: "Langsom trafik mod Nordhavn",
-    window: "15:00-18:30",
-    source: "DR Trafik",
-    radiusMeters: 450,
-  },
-  {
-    id: "event-amager-closure",
-    lat: 55.63874,
-    lng: 12.58292,
-    roadName: "Amagermotorvejen",
-    type: "Spor lukket",
-    severity: "high",
-    delay: 24,
-    title: "Et spor lukket efter tabt gods",
-    window: "07:30-08:50",
-    source: "Vejdirektoratet",
-    radiusMeters: 700,
-  },
-  {
-    id: "event-roskilde-slow",
-    lat: 55.67251,
-    lng: 12.50633,
-    roadName: "Roskildevej",
-    type: "Langsom trafik",
-    severity: "low",
-    delay: 5,
-    title: "Tæt trafik mod byen",
-    window: "07:00-09:00",
-    source: "Trafikinfo",
-    radiusMeters: 420,
-  },
-];
-
 const sampleRoutes = {
   work: [
     { lat: 55.68888, lng: 12.49193, roadName: "Jyllingevej" },
@@ -157,6 +89,11 @@ const addressSuggestions = {
 let cloudSyncTimer = null;
 let isCloudSyncing = false;
 let loginResendTimer = null;
+let trafficEvents = [];
+let trafficEventsStatus = {
+  configured: false,
+  message: "Officiel trafikkilde er ikke sat op endnu.",
+};
 
 const elements = {
   authBanner: document.querySelector("#authBanner"),
@@ -875,7 +812,7 @@ function renderOverlay() {
     mapState.overlay.append(circle, number);
   });
 
-  simulatedEvents.forEach((event) => {
+  trafficEvents.forEach((event) => {
     const point = latLngToScreen(event);
     if (point.x < -40 || point.y < -40 || point.x > width + 40 || point.y > height + 40) return;
 
@@ -921,7 +858,10 @@ function renderMatches(matches) {
   elements.eventList.textContent = "";
 
   if (!matches.length) {
-    elements.eventList.innerHTML = `<div class="empty">Ingen matchende hændelser på den aktive rute.</div>`;
+    const message = trafficEventsStatus.configured
+      ? "Ingen matchende h�ndelser p� den aktive rute."
+      : "Officiel trafikkilde er ikke sat op endnu. Google-rejsetid kan stadig bruges.";
+    elements.eventList.innerHTML = `<div class="empty">${message}</div>`;
     return;
   }
 
@@ -1258,8 +1198,9 @@ function removeNearestRoutePoint(screenX, screenY, maxDistance = 28) {
 }
 
 async function runTrafficCheck() {
+  await refreshTrafficEvents();
   const routes = [getActiveRoute()];
-  const routeResults = routes.map((route) => evaluateRoute(route));
+  const routeResults = routes.map((route) => evaluateRoute(route, trafficEvents));
   const validResults = routeResults.filter((result) => result.valid);
 
   if (!validResults.length) {
@@ -1287,10 +1228,32 @@ async function runTrafficCheck() {
   renderGoogleTraffic();
   sendMessages(activeMatches, best);
   saveState();
+  if (!trafficEventsStatus.configured) {
+    showToast("Google-rejsetid er tjekket. Officiel trafikkilde er ikke sat op endnu.");
+    return;
+  }
   showToast(best.matches.length ? `Bedste alternativ: ${best.route.name}` : `${best.route.name} ser fri ud.`);
 }
 
-function evaluateRoute(routeItem) {
+async function refreshTrafficEvents() {
+  try {
+    const result = await apiRequest("/api/traffic-events");
+    trafficEvents = Array.isArray(result.events) ? result.events : [];
+    trafficEventsStatus = {
+      configured: Boolean(result.configured),
+      message: result.message || "",
+      source: result.source || "Officiel trafikdata",
+    };
+  } catch (error) {
+    trafficEvents = [];
+    trafficEventsStatus = {
+      configured: true,
+      message: `Trafikkilden kunne ikke hentes: ${error.message}`,
+    };
+  }
+}
+
+function evaluateRoute(routeItem, events = trafficEvents) {
   const route = getValidRoutePoints(routeItem);
   if (route.length < 2) {
     return { route: routeItem, valid: false, matches: [], delay: 0 };
@@ -1300,7 +1263,7 @@ function evaluateRoute(routeItem) {
     ? [state.schedule.departFrom, state.schedule.departTo]
     : [state.schedule.returnFrom, state.schedule.returnTo];
   const routeRoads = new Set(getRouteSegments(routeItem).map((segment) => normalizeName(segment.name)));
-  const matches = simulatedEvents
+  const matches = events
     .map((event) => ({
       ...event,
       distanceMeters: Math.round(distanceToRouteMeters(event, route)),

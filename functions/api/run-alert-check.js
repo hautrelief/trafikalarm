@@ -2,6 +2,7 @@ import { requireDb } from "../_shared/auth.js";
 import { sendEmail } from "../_shared/email.js";
 import { json, optionsResponse } from "../_shared/http.js";
 import { evaluateProfile, evaluateRoute } from "../_shared/traffic.js";
+import { fetchTrafficEvents } from "../_shared/traffic-events.js";
 
 const ROUTES_ENDPOINT = "https://routes.googleapis.com/directions/v2:computeRoutes";
 
@@ -25,6 +26,14 @@ export async function onRequestPost({ request, env }) {
   let checked = 0;
   let sent = 0;
   const errors = [];
+  let trafficEvents = [];
+
+  try {
+    const trafficResult = await fetchTrafficEvents(env);
+    trafficEvents = trafficResult.events;
+  } catch (error) {
+    return json({ ok: false, checked, sent, error: error.message || "Trafikkilden kunne ikke hentes." }, 502);
+  }
 
   for (const row of rows.results || []) {
     checked += 1;
@@ -32,10 +41,10 @@ export async function onRequestPost({ request, env }) {
     const email = profile.user && profile.user.email;
     if (!email) continue;
 
-    const alerts = evaluateProfile(profile);
+    const alerts = evaluateProfile(profile, new Date(), trafficEvents);
     for (const alert of alerts) {
       const strongest = [...alert.matches].sort((a, b) => b.delay - a.delay)[0];
-      const routeOverview = await buildRouteOverview(profile, alert, env);
+      const routeOverview = await buildRouteOverview(profile, alert, env, trafficEvents);
       const dedupeKey = `${row.user_id}:${alert.route.id}:${strongest.id}:${new Date().toISOString().slice(0, 13)}`;
       const alreadySent = await env.DB.prepare("SELECT id FROM alert_log WHERE dedupe_key = ?")
         .bind(dedupeKey)
@@ -61,9 +70,9 @@ export async function onRequestPost({ request, env }) {
   return json({ ok: true, checked, sent, errors });
 }
 
-async function buildRouteOverview(profile, alert, env) {
+async function buildRouteOverview(profile, alert, env, trafficEvents) {
   const routes = profile.routes && Array.isArray(profile.routes[alert.direction]) ? profile.routes[alert.direction] : [];
-  const evaluated = routes.map((route) => evaluateRoute(profile, route, alert.direction)).filter((result) => result.valid);
+  const evaluated = routes.map((route) => evaluateRoute(profile, route, alert.direction, trafficEvents)).filter((result) => result.valid);
   const enriched = [];
 
   for (const result of evaluated.slice(0, 6)) {

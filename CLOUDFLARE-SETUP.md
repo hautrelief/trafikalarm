@@ -98,3 +98,14 @@ https://trafikalarm-alert-cron.<dit-worker-subdomain>.workers.dev/run-now
 ```
 
 Svaret bÃ¸r indeholde `ok: true` og et resultat med antal profiler tjekket og mails sendt.
+
+## 7. Officielle trafikhændelser
+
+Appen bruger ikke længere lokale demo-hændelser som trafikdata. Den matcher kun ruter mod hændelser fra en officiel JSON/GeoJSON-kilde, når kilden er sat op i Cloudflare.
+
+På Pages-projektet under **Settings** -> **Variables and secrets** kan du tilføje:
+
+- `TRAFFIC_EVENTS_URL` som almindelig variabel med URL'en til den officielle trafikfeed.
+- `TRAFFIC_EVENTS_SOURCE` som almindelig variabel, fx `Vejdirektoratet`, så kilden står pænt i appen og i mails.
+
+Hvis `TRAFFIC_EVENTS_URL` ikke er sat, bruger appen stadig Google-rejsetid, men den viser ikke falske hændelser på ruten.

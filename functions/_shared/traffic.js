@@ -1,77 +1,9 @@
-export const simulatedEvents = [
-  {
-    id: "event-borups-crash",
-    lat: 55.69423,
-    lng: 12.53556,
-    roadName: "Borups Alle",
-    type: "Uheld",
-    severity: "high",
-    delay: 18,
-    title: "Uheld blokerer højre spor",
-    window: "07:05-09:20",
-    source: "Vejdirektoratet",
-    radiusMeters: 550,
-  },
-  {
-    id: "event-tagens-roadwork",
-    lat: 55.70545,
-    lng: 12.55021,
-    roadName: "Tagensvej",
-    type: "Vejarbejde",
-    severity: "medium",
-    delay: 9,
-    title: "Akut vejarbejde ved kryds",
-    window: "06:30-10:00",
-    source: "Dataudveksleren",
-    radiusMeters: 450,
-  },
-  {
-    id: "event-strandboulevard-queue",
-    lat: 55.70483,
-    lng: 12.58794,
-    roadName: "Strandboulevarden",
-    type: "Kø",
-    severity: "medium",
-    delay: 12,
-    title: "Langsom trafik mod Nordhavn",
-    window: "15:00-18:30",
-    source: "DR Trafik",
-    radiusMeters: 450,
-  },
-  {
-    id: "event-amager-closure",
-    lat: 55.63874,
-    lng: 12.58292,
-    roadName: "Amagermotorvejen",
-    type: "Spor lukket",
-    severity: "high",
-    delay: 24,
-    title: "Et spor lukket efter tabt gods",
-    window: "07:30-08:50",
-    source: "Vejdirektoratet",
-    radiusMeters: 700,
-  },
-  {
-    id: "event-roskilde-slow",
-    lat: 55.67251,
-    lng: 12.50633,
-    roadName: "Roskildevej",
-    type: "Langsom trafik",
-    severity: "low",
-    delay: 5,
-    title: "Tæt trafik mod byen",
-    window: "07:00-09:00",
-    source: "Trafikinfo",
-    radiusMeters: 420,
-  },
-];
-
-export function evaluateProfile(profile, now = new Date()) {
+export function evaluateProfile(profile, now = new Date(), events = []) {
   const direction = inferDirection(profile, now);
   if (!direction) return [];
 
   const routes = profile.routes && Array.isArray(profile.routes[direction]) ? profile.routes[direction] : [];
-  const results = routes.map((route) => evaluateRoute(profile, route, direction)).filter((result) => result.valid);
+  const results = routes.map((route) => evaluateRoute(profile, route, direction, events)).filter((result) => result.valid);
   if (!results.length) return [];
 
   const best = [...results].sort((a, b) => a.delay - b.delay || a.matches.length - b.matches.length)[0];
@@ -80,7 +12,7 @@ export function evaluateProfile(profile, now = new Date()) {
     .map((result) => ({ ...result, direction, best }));
 }
 
-export function evaluateRoute(profile, routeItem, direction) {
+export function evaluateRoute(profile, routeItem, direction, events = []) {
   const route = (routeItem.points || []).filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
   if (route.length < 2) return { route: routeItem, valid: false, matches: [], delay: 0 };
 
@@ -91,7 +23,7 @@ export function evaluateRoute(profile, routeItem, direction) {
   const routeRoads = new Set(route.map((point) => normalizeName(point.roadName)).filter(Boolean));
   const minDelay = Number(schedule.minDelay || 0);
 
-  const matches = simulatedEvents
+  const matches = events
     .map((event) => ({
       ...event,
       distanceMeters: Math.round(distanceToRouteMeters(event, route)),
