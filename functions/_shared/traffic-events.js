@@ -43,11 +43,11 @@ export async function fetchStoredTrafficEvents(env) {
     const rows = await env.DB.prepare(
       `SELECT event_json
        FROM traffic_events
-       WHERE expires_at > ?
+       WHERE source = ? AND expires_at > ?
        ORDER BY updated_at DESC
        LIMIT 500`
     )
-      .bind(new Date().toISOString())
+      .bind(source, new Date().toISOString())
       .all();
 
     return {
