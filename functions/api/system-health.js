@@ -18,6 +18,9 @@ export async function onRequestGet({ env }) {
       resendApiKey: Boolean(env.RESEND_API_KEY),
       alertFrom: Boolean(env.ALERT_FROM),
     },
+    trafficEnvKeys: Object.keys(env)
+      .filter((key) => key.toUpperCase().includes("TRAFFIC"))
+      .sort(),
   });
 }
 
