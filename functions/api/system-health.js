@@ -12,7 +12,7 @@ export async function onRequestGet({ env }) {
     checks: {
       dbBinding: Boolean(env.DB),
       trafficEventsTable: dbReady,
-      trafficIngestSecret: Boolean(env.TRAFFIC_INGEST_SECRET),
+      trafficIngestSecret: Boolean(getEnv(env, "TRAFFIC_INGEST_SECRET")),
       trafficEventsSource: Boolean(env.TRAFFIC_EVENTS_SOURCE),
       googleMapsApiKey: Boolean(env.GOOGLE_MAPS_API_KEY),
       resendApiKey: Boolean(env.RESEND_API_KEY),
@@ -22,6 +22,12 @@ export async function onRequestGet({ env }) {
       .filter((key) => key.toUpperCase().includes("TRAFFIC"))
       .sort(),
   });
+}
+
+function getEnv(env, name) {
+  if (env[name]) return env[name];
+  const match = Object.keys(env).find((key) => key.trim() === name);
+  return match ? env[match] : "";
 }
 
 async function hasTrafficEventsTable(env) {

@@ -12,12 +12,13 @@ export async function onRequestPost({ request, env }) {
   const dbError = requireDb(env);
   if (dbError) return dbError;
 
-  if (!env.TRAFFIC_INGEST_SECRET) {
+  const ingestSecret = getEnv(env, "TRAFFIC_INGEST_SECRET");
+  if (!ingestSecret) {
     return json({ error: "TRAFFIC_INGEST_SECRET mangler i Cloudflare Pages." }, 500);
   }
 
   const supplied = request.headers.get("X-Traffic-Ingest-Secret") || "";
-  if (supplied !== env.TRAFFIC_INGEST_SECRET) {
+  if (supplied !== ingestSecret) {
     return json({ error: "Manglende adgang til trafikindtag." }, 401);
   }
 
@@ -71,4 +72,10 @@ export async function onRequestPost({ request, env }) {
     source,
     expiresAt,
   });
+}
+
+function getEnv(env, name) {
+  if (env[name]) return env[name];
+  const match = Object.keys(env).find((key) => key.trim() === name);
+  return match ? env[match] : "";
 }
