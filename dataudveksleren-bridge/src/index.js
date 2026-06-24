@@ -63,6 +63,7 @@ const xmlParser = new XMLParser({
 const amqpUrl = new URL(process.env.DATAUDVEKSLER_AMQP_URL);
 const address = amqpUrl.pathname.replace(/^\/+/, "");
 const connection = new Connection({
+  host: amqpUrl.hostname,
   hostname: amqpUrl.hostname,
   port: Number(amqpUrl.port || 5671),
   transport: "tls",
