@@ -1,7 +1,10 @@
 import { Buffer } from "node:buffer";
+import { existsSync, readFileSync } from "node:fs";
 import { URL } from "node:url";
 import { XMLParser } from "fast-xml-parser";
 import { Connection } from "rhea-promise";
+
+loadEnvFile();
 
 const required = [
   "DATAUDVEKSLER_AMQP_URL",
@@ -16,6 +19,39 @@ for (const key of required) {
     console.error(`Missing required environment variable: ${key}`);
     process.exit(1);
   }
+}
+
+function loadEnvFile() {
+  const candidates = [
+    process.env.RUTEALARM_ENV_FILE,
+    "my.env",
+    ".env",
+    "dataudveksleren-bridge/my.env",
+    "dataudveksleren-bridge/.env",
+  ].filter(Boolean);
+
+  const envPath = candidates.find((candidate) => existsSync(candidate));
+  if (!envPath) return;
+
+  const lines = readFileSync(envPath, "utf8").split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!match) continue;
+    const [, key, rawValue] = match;
+    if (process.env[key]) continue;
+    process.env[key] = unquote(rawValue.trim());
+  }
+
+  console.log(`Loaded environment variables from ${envPath}`);
+}
+
+function unquote(value) {
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    return value.slice(1, -1);
+  }
+  return value;
 }
 
 const source = process.env.RUTEALARM_SOURCE || "Dataudveksleren";
