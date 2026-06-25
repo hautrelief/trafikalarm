@@ -749,6 +749,15 @@ function renderRouteTabs() {
 }
 
 function renderReverseRouteSource() {
+  const shouldShowReverseCopy = state.routeMode === "home";
+  const sourceField = elements.reverseRouteSource.closest(".reverse-route-source");
+  if (sourceField) sourceField.hidden = !shouldShowReverseCopy;
+  elements.copyReverseRoute.hidden = !shouldShowReverseCopy;
+  if (!shouldShowReverseCopy) {
+    elements.reverseRouteSource.textContent = "";
+    elements.copyReverseRoute.disabled = true;
+    return;
+  }
   const sourceMode = state.routeMode === "work" ? "home" : "work";
   const sourceLabel = sourceMode === "work" ? "fra" : "til";
   const routes = getOppositeRoutesWithPoints();
