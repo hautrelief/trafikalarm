@@ -750,18 +750,18 @@ function renderRouteTabs() {
 
 function renderReverseRouteSource() {
   const sourceMode = state.routeMode === "work" ? "home" : "work";
-  const sourceLabel = sourceMode === "work" ? "til arbejde" : "hjem";
+  const sourceLabel = sourceMode === "work" ? "fra" : "til";
   const routes = getOppositeRoutesWithPoints();
   elements.reverseRouteSource.textContent = "";
 
   if (!routes.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = `Ingen rute ${sourceLabel} endnu`;
+    option.textContent = `Ingen ${sourceLabel}-rute endnu`;
     elements.reverseRouteSource.append(option);
     elements.reverseRouteSource.disabled = true;
     elements.copyReverseRoute.disabled = true;
-    elements.copyReverseRoute.title = `Tegn først en rute ${sourceLabel}`;
+    elements.copyReverseRoute.title = `Tegn først en ${sourceLabel}-rute`;
     return;
   }
 
@@ -1826,8 +1826,8 @@ function copyRouteFromOppositeDirection(sourceRouteId = "") {
   const sourceMode = state.routeMode === "work" ? "home" : "work";
   const sourceRoute = getOppositeRoutesWithPoints().find((route) => route.id === sourceRouteId) || getActiveOppositeRoute();
   if (!sourceRoute || sourceRoute.points.length < 2) {
-    const label = sourceMode === "work" ? "til arbejde" : "hjem";
-    return { ok: false, message: `Der er ingen tegnet rute ${label} at kopiere endnu.` };
+    const label = sourceMode === "work" ? "fra" : "til";
+    return { ok: false, message: `Der er ingen tegnet ${label}-rute at kopiere endnu.` };
   }
 
   const points = [...sourceRoute.points]
@@ -1886,7 +1886,7 @@ function getRouteSegments(route = getActiveRoute()) {
 }
 
 function routeLabel() {
-  return state.routeMode === "work" ? "Til arbejde" : "Hjem";
+  return state.routeMode === "work" ? "Fra" : "Til";
 }
 
 function fitActiveRoute() {

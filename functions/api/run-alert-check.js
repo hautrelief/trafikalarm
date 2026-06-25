@@ -90,7 +90,7 @@ async function buildRouteOverview(profile, alert, env, trafficEvents) {
 
 function makeAlertText(alert, strongest, overview) {
   const routeName = alert.route.name || "din rute";
-  const direction = alert.direction === "work" ? "Til arbejde" : "Hjem";
+  const direction = alert.direction === "work" ? "Fra" : "Til";
   const recommended = overview.recommended && overview.recommended.route
     ? overview.recommended.route.name || "alternativ rute"
     : routeName;
