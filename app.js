@@ -777,7 +777,7 @@ function renderReverseRouteSource() {
   elements.reverseRouteSource.value = selectedRoute.id;
   elements.reverseRouteSource.disabled = false;
   elements.copyReverseRoute.disabled = false;
-  elements.copyReverseRoute.title = `Kopiér ${selectedRoute.name} som rute tilbage`;
+  elements.copyReverseRoute.title = `Kopier ${selectedRoute.name} som rute tilbage`;
 }
 function renderMap() {
   if (!mapState) return;
