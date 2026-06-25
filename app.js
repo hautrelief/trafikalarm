@@ -131,6 +131,7 @@ const elements = {
   modeButtons: document.querySelectorAll(".segment[data-mode]"),
   routeTabs: document.querySelector("#routeTabs"),
   addRoute: document.querySelector("#addRoute"),
+  copyReverseRoute: document.querySelector("#copyReverseRoute"),
   routeNameInput: document.querySelector("#routeNameInput"),
   deleteRoute: document.querySelector("#deleteRoute"),
   sampleRoute: document.querySelector("#sampleRoute"),
@@ -384,6 +385,19 @@ function bindEvents() {
     renderAll();
     saveState();
     showToast("Alternativ rute er tilfÃ¸jet.");
+  });
+
+  elements.copyReverseRoute.addEventListener("click", () => {
+    const result = copyRouteFromOppositeDirection();
+    if (!result.ok) {
+      showToast(result.message);
+      return;
+    }
+    invalidateActiveRouteStatus();
+    renderAll();
+    fitActiveRoute();
+    saveState();
+    showToast(result.message);
   });
 
   elements.routeNameInput.addEventListener("input", () => {
@@ -730,6 +744,12 @@ function renderRouteTabs() {
   });
   elements.routeNameInput.value = getActiveRoute().name;
   elements.deleteRoute.disabled = getRouteList().length <= 1;
+  const oppositeRoute = getActiveOppositeRoute();
+  const oppositeLabel = state.routeMode === "work" ? "hjem" : "til arbejde";
+  elements.copyReverseRoute.disabled = !oppositeRoute || oppositeRoute.points.length < 2;
+  elements.copyReverseRoute.title = oppositeRoute && oppositeRoute.points.length >= 2
+    ? `Kopiér ${oppositeRoute.name} som rute ${oppositeLabel}`
+    : `Tegn først en rute ${oppositeLabel}`;
 }
 
 function renderMap() {
@@ -1774,6 +1794,36 @@ function createEmptyRoute() {
     name: `${label} ${getRouteList().length + 1}`,
     points: [],
   };
+}
+function copyRouteFromOppositeDirection() {
+  const sourceMode = state.routeMode === "work" ? "home" : "work";
+  const sourceRoute = getActiveOppositeRoute();
+  if (!sourceRoute || sourceRoute.points.length < 2) {
+    const label = sourceMode === "work" ? "til arbejde" : "hjem";
+    return { ok: false, message: `Der er ingen tegnet rute ${label} at kopiere endnu.` };
+  }
+
+  const points = [...sourceRoute.points]
+    .reverse()
+    .map((point) => ({ ...point }));
+  const route = {
+    id: `${state.routeMode}-${Date.now().toString(36)}`,
+    name: `${sourceRoute.name || "Rute"} retur`,
+    points,
+  };
+
+  getRouteList().push(route);
+  state.activeRoutes[state.routeMode] = route.id;
+  return { ok: true, message: `Ruten er kopieret og vendt fra ${sourceRoute.name || "den anden retning"}.` };
+}
+
+function getActiveOppositeRoute() {
+  const mode = state.routeMode === "work" ? "home" : "work";
+  const routes = getRouteList(mode);
+  const activeId = state.activeRoutes[mode];
+  const activeRoute = routes.find((route) => route.id === activeId);
+  if (activeRoute && activeRoute.points.length >= 2) return activeRoute;
+  return routes.find((route) => route.points.length >= 2) || activeRoute || routes[0];
 }
 
 function getRouteStatus(routeId) {
