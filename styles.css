@@ -374,6 +374,20 @@ input:focus {
   display: grid;
   gap: 7px;
 }
+.reverse-route-source select {
+  background: #fffdf8;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font: inherit;
+  min-height: 42px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.reverse-route-source select:disabled {
+  color: var(--muted);
+}
 
 .route-tab,
 .route-option {

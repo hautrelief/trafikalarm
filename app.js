@@ -132,6 +132,7 @@ const elements = {
   routeTabs: document.querySelector("#routeTabs"),
   addRoute: document.querySelector("#addRoute"),
   copyReverseRoute: document.querySelector("#copyReverseRoute"),
+  reverseRouteSource: document.querySelector("#reverseRouteSource"),
   routeNameInput: document.querySelector("#routeNameInput"),
   deleteRoute: document.querySelector("#deleteRoute"),
   sampleRoute: document.querySelector("#sampleRoute"),
@@ -388,7 +389,7 @@ function bindEvents() {
   });
 
   elements.copyReverseRoute.addEventListener("click", () => {
-    const result = copyRouteFromOppositeDirection();
+    const result = copyRouteFromOppositeDirection(elements.reverseRouteSource.value);
     if (!result.ok) {
       showToast(result.message);
       return;
@@ -744,14 +745,40 @@ function renderRouteTabs() {
   });
   elements.routeNameInput.value = getActiveRoute().name;
   elements.deleteRoute.disabled = getRouteList().length <= 1;
-  const oppositeRoute = getActiveOppositeRoute();
-  const oppositeLabel = state.routeMode === "work" ? "hjem" : "til arbejde";
-  elements.copyReverseRoute.disabled = !oppositeRoute || oppositeRoute.points.length < 2;
-  elements.copyReverseRoute.title = oppositeRoute && oppositeRoute.points.length >= 2
-    ? `Kopiér ${oppositeRoute.name} som rute ${oppositeLabel}`
-    : `Tegn først en rute ${oppositeLabel}`;
+  renderReverseRouteSource();
 }
 
+function renderReverseRouteSource() {
+  const sourceMode = state.routeMode === "work" ? "home" : "work";
+  const sourceLabel = sourceMode === "work" ? "til arbejde" : "hjem";
+  const routes = getOppositeRoutesWithPoints();
+  elements.reverseRouteSource.textContent = "";
+
+  if (!routes.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = `Ingen rute ${sourceLabel} endnu`;
+    elements.reverseRouteSource.append(option);
+    elements.reverseRouteSource.disabled = true;
+    elements.copyReverseRoute.disabled = true;
+    elements.copyReverseRoute.title = `Tegn først en rute ${sourceLabel}`;
+    return;
+  }
+
+  routes.forEach((route) => {
+    const option = document.createElement("option");
+    option.value = route.id;
+    option.textContent = `${route.name} (${route.points.length} punkter)`;
+    elements.reverseRouteSource.append(option);
+  });
+
+  const activeOppositeId = state.activeRoutes[sourceMode];
+  const selectedRoute = routes.find((route) => route.id === activeOppositeId) || routes[0];
+  elements.reverseRouteSource.value = selectedRoute.id;
+  elements.reverseRouteSource.disabled = false;
+  elements.copyReverseRoute.disabled = false;
+  elements.copyReverseRoute.title = `Kopiér ${selectedRoute.name} som rute tilbage`;
+}
 function renderMap() {
   if (!mapState) return;
 
@@ -1795,9 +1822,9 @@ function createEmptyRoute() {
     points: [],
   };
 }
-function copyRouteFromOppositeDirection() {
+function copyRouteFromOppositeDirection(sourceRouteId = "") {
   const sourceMode = state.routeMode === "work" ? "home" : "work";
-  const sourceRoute = getActiveOppositeRoute();
+  const sourceRoute = getOppositeRoutesWithPoints().find((route) => route.id === sourceRouteId) || getActiveOppositeRoute();
   if (!sourceRoute || sourceRoute.points.length < 2) {
     const label = sourceMode === "work" ? "til arbejde" : "hjem";
     return { ok: false, message: `Der er ingen tegnet rute ${label} at kopiere endnu.` };
@@ -1818,12 +1845,15 @@ function copyRouteFromOppositeDirection() {
 }
 
 function getActiveOppositeRoute() {
-  const mode = state.routeMode === "work" ? "home" : "work";
-  const routes = getRouteList(mode);
-  const activeId = state.activeRoutes[mode];
-  const activeRoute = routes.find((route) => route.id === activeId);
-  if (activeRoute && activeRoute.points.length >= 2) return activeRoute;
-  return routes.find((route) => route.points.length >= 2) || activeRoute || routes[0];
+  const sourceMode = state.routeMode === "work" ? "home" : "work";
+  const routes = getOppositeRoutesWithPoints();
+  const activeId = state.activeRoutes[sourceMode];
+  return routes.find((route) => route.id === activeId) || routes[0];
+}
+
+function getOppositeRoutesWithPoints() {
+  const sourceMode = state.routeMode === "work" ? "home" : "work";
+  return getRouteList(sourceMode).filter((route) => route.points.length >= 2);
 }
 
 function getRouteStatus(routeId) {
