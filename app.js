@@ -241,6 +241,41 @@ function normalizeRoute(route, fallbackId) {
   };
 }
 
+function mergeCloudProfileWithLocalRoutes(cloudProfile, localProfile) {
+  const profile = structuredClone(cloudProfile || {});
+  profile.routes = { ...(profile.routes || {}) };
+  profile.activeRoutes = { ...(profile.activeRoutes || {}) };
+  let usedLocalRoutes = false;
+
+  ["work", "home"].forEach((mode) => {
+    if (shouldPreferLocalRoutes(localProfile, profile, mode)) {
+      profile.routes[mode] = structuredClone(localProfile.routes[mode]);
+      profile.activeRoutes[mode] = localProfile.activeRoutes[mode];
+      usedLocalRoutes = true;
+    }
+  });
+
+  if (usedLocalRoutes) profile.routeMode = localProfile.routeMode;
+  return { profile, usedLocalRoutes };
+}
+
+function shouldPreferLocalRoutes(localProfile, cloudProfile, mode) {
+  const localScore = routeScore(localProfile && localProfile.routes && localProfile.routes[mode]);
+  const cloudScore = routeScore(cloudProfile && cloudProfile.routes && cloudProfile.routes[mode]);
+  if (localScore.points !== cloudScore.points) return localScore.points > cloudScore.points;
+  return localScore.routes > cloudScore.routes;
+}
+
+function routeScore(routes) {
+  const list = Array.isArray(routes) ? routes : [];
+  return list.reduce((score, route) => {
+    const points = Array.isArray(route && route.points) ? route.points.length : 0;
+    return {
+      routes: score.routes + (points > 0 ? 1 : 0),
+      points: score.points + points,
+    };
+  }, { routes: 0, points: 0 });
+}
 function sanitizeLocation(location) {
   if (!location || !Number.isFinite(location.lat) || !Number.isFinite(location.lng)) return null;
   return {
@@ -1513,23 +1548,29 @@ async function verifyLoginCode() {
       method: "POST",
       body: { email, code },
     });
+    const localProfile = serializeProfileState();
+    let shouldSyncAfterLogin = false;
     state.cloud.sessionToken = result.sessionToken;
     state.cloud.userId = result.user && result.user.id ? result.user.id : "";
     if (result.profile) {
+      const mergedProfile = mergeCloudProfileWithLocalRoutes(result.profile, localProfile);
+      shouldSyncAfterLogin = mergedProfile.usedLocalRoutes;
       state = sanitizeState(mergeState(structuredClone(defaultState), {
-        ...result.profile,
+        ...mergedProfile.profile,
         cloud: state.cloud,
       }));
     } else {
       state.user.email = email;
+      shouldSyncAfterLogin = true;
     }
     state.login.codeRequestedAt = null;
     state.login.codeEmail = "";
     state.cloud.lastSync = new Date().toISOString();
-    const message = result.profile ? "Du er logget ind, og profilen er hentet." : "Du er logget ind. Dine ændringer gemmes automatisk.";
+    const message = shouldSyncAfterLogin && result.profile ? "Du er logget ind. Lokale ruter er bevaret og gemmes i skyen." : (result.profile ? "Du er logget ind, og profilen er hentet." : "Du er logget ind. Dine ændringer gemmes automatisk.");
     syncForm();
     renderAll();
     saveState({ localOnly: true });
+    if (shouldSyncAfterLogin) scheduleCloudSync();
     elements.sampleRoute.disabled = false;
     showToast(message || "Ruten er foreslået og klar til redigering.");
     return;
