@@ -47,7 +47,7 @@ export function evaluateRoute(profile, routeItem, direction, events = []) {
   };
 }
 
-function inferDirection(profile, now) {
+export function inferDirection(profile, now) {
   const schedule = profile.schedule || {};
   const day = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][now.getDay()];
   if (Array.isArray(schedule.days) && schedule.days.length && !schedule.days.includes(day)) return null;

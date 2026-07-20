@@ -1,7 +1,7 @@
 import { requireDb } from "../_shared/auth.js";
 import { sendEmail } from "../_shared/email.js";
 import { json, optionsResponse } from "../_shared/http.js";
-import { evaluateProfile, evaluateRoute } from "../_shared/traffic.js";
+import { evaluateProfile, evaluateRoute, inferDirection } from "../_shared/traffic.js";
 import { fetchTrafficEvents } from "../_shared/traffic-events.js";
 
 const ROUTES_ENDPOINT = "https://routes.googleapis.com/directions/v2:computeRoutes";
@@ -42,6 +42,7 @@ export async function onRequestPost({ request, env }) {
     if (!email) continue;
 
     const alerts = evaluateProfile(profile, new Date(), trafficEvents);
+    const sentOfficialRouteIds = new Set();
     for (const alert of alerts) {
       const strongest = [...alert.matches].sort((a, b) => b.delay - a.delay)[0];
       const routeOverview = await buildRouteOverview(profile, alert, env, trafficEvents);
@@ -61,13 +62,79 @@ export async function onRequestPost({ request, env }) {
         await env.DB.prepare("INSERT INTO alert_log (id, user_id, dedupe_key, sent_at) VALUES (?, ?, ?, ?)")
           .bind(crypto.randomUUID(), row.user_id, dedupeKey, new Date().toISOString())
           .run();
+        sentOfficialRouteIds.add(alert.route.id);
       } catch (error) {
         errors.push({ userId: row.user_id, message: error.message });
+      }
+    }
+
+    const googleAlert = await buildGoogleTrafficAlert(profile, env, trafficEvents, sentOfficialRouteIds);
+    if (googleAlert) {
+      const dedupeKey = `${row.user_id}:google-heavy:${googleAlert.direction}:${googleAlert.strongest.route.id}:${new Date().toISOString().slice(0, 13)}`;
+      const alreadySent = await env.DB.prepare("SELECT id FROM alert_log WHERE dedupe_key = ?")
+        .bind(dedupeKey)
+        .first();
+      if (!alreadySent) {
+        try {
+          await sendEmail(env, {
+            to: email,
+            subject: `Rutealarm: Unormalt meget trafik på ${googleAlert.strongest.route.name || "din rute"}`,
+            text: makeGoogleTrafficAlertText(googleAlert),
+          });
+          sent += 1;
+          await env.DB.prepare("INSERT INTO alert_log (id, user_id, dedupe_key, sent_at) VALUES (?, ?, ?, ?)")
+            .bind(crypto.randomUUID(), row.user_id, dedupeKey, new Date().toISOString())
+            .run();
+        } catch (error) {
+          errors.push({ userId: row.user_id, message: error.message });
+        }
       }
     }
   }
 
   return json({ ok: true, checked, sent, errors });
+}
+
+async function buildGoogleTrafficAlert(profile, env, trafficEvents, skippedRouteIds = new Set()) {
+  if (!env.GOOGLE_MAPS_API_KEY) return null;
+  const direction = inferDirection(profile, new Date());
+  if (!direction) return null;
+
+  const routes = profile.routes && Array.isArray(profile.routes[direction]) ? profile.routes[direction] : [];
+  const evaluated = routes.map((route) => evaluateRoute(profile, route, direction, trafficEvents)).filter((result) => result.valid);
+  if (!evaluated.length) return null;
+
+  const enriched = [];
+  for (const result of evaluated.slice(0, 6)) {
+    const google = await getGoogleTraffic(env, result.route.points || []);
+    enriched.push({
+      ...result,
+      google,
+      score: result.delay + (google && google.ok ? Math.round((google.delaySeconds || 0) / 60) : 0),
+    });
+  }
+
+  const heavyRoutes = enriched.filter((result) =>
+    !skippedRouteIds.has(result.route.id) &&
+    result.google &&
+    result.google.ok &&
+    result.google.trafficLevel === "heavy"
+  );
+  if (!heavyRoutes.length) return null;
+
+  const strongest = [...heavyRoutes].sort((a, b) =>
+    (b.google.delaySeconds || 0) - (a.google.delaySeconds || 0)
+  )[0];
+  const recommended = [...enriched].sort((a, b) => a.score - b.score || a.matches.length - b.matches.length)[0] || strongest;
+
+  return {
+    direction,
+    strongest,
+    overview: {
+      routes: enriched,
+      recommended,
+    },
+  };
 }
 
 async function buildRouteOverview(profile, alert, env, trafficEvents) {
@@ -105,6 +172,33 @@ Retning: ${direction}
 Forventet ekstra tid: ca. ${strongest.delay} minutter
 Kilde: ${strongest.source}
 Aktiv periode: ${strongest.window}
+
+Anbefalet rute lige nu:
+${recommended}
+
+Ruteoverblik:
+${routeLines}
+
+Du kan ændre eller slå dine alarmer fra ved at logge ind i Rutealarm.`;
+}
+
+function makeGoogleTrafficAlertText(alert) {
+  const routeName = alert.strongest.route.name || "din rute";
+  const direction = alert.direction === "work" ? "Fra" : "Til";
+  const delayMinutes = Math.round((alert.strongest.google.delaySeconds || 0) / 60);
+  const recommended = alert.overview.recommended && alert.overview.recommended.route
+    ? alert.overview.recommended.route.name || "alternativ rute"
+    : routeName;
+  const routeLines = alert.overview.routes.length
+    ? alert.overview.routes.map(formatRouteOverview).join("\n\n")
+    : "Ingen øvrige ruter kunne vurderes.";
+
+  return `Google Maps Platform melder unormalt meget trafik.
+
+Rute: ${routeName}
+Retning: ${direction}
+Forventet ekstra tid: ca. ${delayMinutes} minutter
+Kilde: Google Maps Platform
 
 Anbefalet rute lige nu:
 ${recommended}
