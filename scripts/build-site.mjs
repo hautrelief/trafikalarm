@@ -14,6 +14,7 @@ const assets = [
   "public/app-icon-512.png",
   "public/mobilepay-qr.png",
   "public/login-background.jpg",
+  "public/login-background-mobile.webp",
 ];
 
 const mimeTypes = {
@@ -25,6 +26,7 @@ const mimeTypes = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
 };
 
 await rm(dist, { recursive: true, force: true });
@@ -75,6 +77,11 @@ if (await stat(mobilepayQr).then(() => true).catch(() => false)) {
 const loginBackground = join(root, "public", "login-background.jpg");
 if (await stat(loginBackground).then(() => true).catch(() => false)) {
   await copyFile(loginBackground, join(dist, "server", "public", "login-background.jpg"));
+}
+
+const mobileLoginBackground = join(root, "public", "login-background-mobile.webp");
+if (await stat(mobileLoginBackground).then(() => true).catch(() => false)) {
+  await copyFile(mobileLoginBackground, join(dist, "server", "public", "login-background-mobile.webp"));
 }
 
 for (const size of [96, 192, 512]) {
