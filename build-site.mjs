@@ -1,7 +1,7 @@
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 
-const root = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+const root = new URL(".", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 const dist = join(root, "dist");
 const assets = [
   "index.html",
@@ -48,9 +48,10 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname.endsWith("/") && url.pathname !== "/" ? url.pathname.slice(0, -1) : url.pathname;
     const asset = ASSETS[path] || ASSETS[path + ".html"] || ASSETS["/index.html"];
+    const noStore = ["/", "/index.html", "/app.js", "/styles.css", "/manifest.json", "/service-worker.js"].includes(path);
     const headers = new Headers({
       "content-type": asset.type,
-      "cache-control": path === "/index.html" || path === "/" ? "no-store" : "public, max-age=3600",
+      "cache-control": noStore ? "no-store" : "public, max-age=3600",
     });
     const body = Uint8Array.from(atob(asset.body), (char) => char.charCodeAt(0));
     return new Response(body, { headers });

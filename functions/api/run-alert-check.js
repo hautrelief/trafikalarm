@@ -1,7 +1,7 @@
 import { requireDb } from "../_shared/auth.js";
 import { sendEmail } from "../_shared/email.js";
 import { json, optionsResponse } from "../_shared/http.js";
-import { evaluateProfile, evaluateRoute, inferDirection } from "../_shared/traffic.js";
+import { evaluateProfile, evaluateRoute, inferDirections } from "../_shared/traffic.js";
 import { fetchTrafficEvents } from "../_shared/traffic-events.js";
 import { getTomTomRouteTraffic } from "../_shared/tomtom-traffic.js";
 
@@ -17,7 +17,7 @@ export async function onRequestPost({ request, env }) {
 
   if (env.CRON_SECRET) {
     const supplied = request.headers.get("X-Cron-Secret") || "";
-    if (supplied !== env.CRON_SECRET) return json({ error: "Manglende adgang til alarmtjek." }, 401);
+    if (!(await secretsMatch(supplied, env.CRON_SECRET))) return json({ error: "Manglende adgang til alarmtjek." }, 401);
   }
 
   const rows = await env.DB.prepare(
@@ -28,116 +28,134 @@ export async function onRequestPost({ request, env }) {
   let sent = 0;
   const errors = [];
   let trafficEvents = [];
+  const now = new Date();
 
   try {
     const trafficResult = await fetchTrafficEvents(env);
     trafficEvents = trafficResult.events;
   } catch (error) {
-    return json({ ok: false, checked, sent, error: error.message || "Trafikkilden kunne ikke hentes." }, 502);
+    errors.push({ source: "traffic-events", message: error.message || "Trafikkilden kunne ikke hentes." });
   }
 
   for (const row of rows.results || []) {
-    checked += 1;
-    const profile = JSON.parse(row.profile_json);
-    const email = profile.user && profile.user.email;
-    if (!email) continue;
-    const tomTomMemo = new Map();
+    try {
+      checked += 1;
+      const profile = JSON.parse(row.profile_json);
+      const email = profile.user && profile.user.email;
+      if (!email) continue;
+      const tomTomMemo = new Map();
 
-    const alerts = evaluateProfile(profile, new Date(), trafficEvents);
-    const sentOfficialRouteIds = new Set();
-    for (const alert of alerts) {
-      const strongest = [...alert.matches].sort((a, b) => b.delay - a.delay)[0];
-      const routeOverview = await buildRouteOverview(profile, alert, env, trafficEvents, tomTomMemo);
-      const dedupeKey = `${row.user_id}:${alert.route.id}:${strongest.id}:${new Date().toISOString().slice(0, 13)}`;
-      const alreadySent = await env.DB.prepare("SELECT id FROM alert_log WHERE dedupe_key = ?")
-        .bind(dedupeKey)
-        .first();
-      if (alreadySent) continue;
+      const alerts = evaluateProfile(profile, now, trafficEvents);
+      const sentOfficialRouteIds = new Set();
+      for (const alert of alerts) {
+        const strongest = [...alert.matches].sort((a, b) => b.delay - a.delay)[0];
+        const routeOverview = await buildRouteOverview(profile, alert, env, trafficEvents, tomTomMemo);
+        const dedupeKey = `${row.user_id}:${alert.direction}:${alert.route.id}:${strongest.id}:${new Date().toISOString().slice(0, 13)}`;
+        const alreadySent = await env.DB.prepare("SELECT id FROM alert_log WHERE dedupe_key = ?")
+          .bind(dedupeKey)
+          .first();
+        if (alreadySent) continue;
 
-      try {
-        await sendEmail(env, {
-          to: email,
-          subject: `Rutealarm: ${strongest.roadName}`,
-          text: makeAlertText(alert, strongest, routeOverview),
-        });
-        sent += 1;
-        await env.DB.prepare("INSERT INTO alert_log (id, user_id, dedupe_key, sent_at) VALUES (?, ?, ?, ?)")
-          .bind(crypto.randomUUID(), row.user_id, dedupeKey, new Date().toISOString())
-          .run();
-        sentOfficialRouteIds.add(alert.route.id);
-      } catch (error) {
-        errors.push({ userId: row.user_id, message: error.message });
-      }
-    }
-
-    const tomTomAlert = await buildTomTomTrafficAlert(profile, env, trafficEvents, sentOfficialRouteIds, tomTomMemo);
-    if (tomTomAlert) {
-      const dedupeKey = `${row.user_id}:tomtom-heavy:${tomTomAlert.direction}:${tomTomAlert.strongest.route.id}:${new Date().toISOString().slice(0, 13)}`;
-      const alreadySent = await env.DB.prepare("SELECT id FROM alert_log WHERE dedupe_key = ?")
-        .bind(dedupeKey)
-        .first();
-      if (!alreadySent) {
         try {
           await sendEmail(env, {
             to: email,
-            subject: `Rutealarm: Tæt trafik på ${tomTomAlert.strongest.route.name || "din rute"}`,
-            text: makeTomTomTrafficAlertText(tomTomAlert),
+            subject: `Rutealarm: ${strongest.roadName}`,
+            text: makeAlertText(alert, strongest, routeOverview),
           });
           sent += 1;
           await env.DB.prepare("INSERT INTO alert_log (id, user_id, dedupe_key, sent_at) VALUES (?, ?, ?, ?)")
             .bind(crypto.randomUUID(), row.user_id, dedupeKey, new Date().toISOString())
             .run();
+          sentOfficialRouteIds.add(`${alert.direction}:${alert.route.id}`);
         } catch (error) {
           errors.push({ userId: row.user_id, message: error.message });
         }
       }
+
+      const tomTomAlerts = await buildTomTomTrafficAlerts(profile, now, env, trafficEvents, sentOfficialRouteIds, tomTomMemo);
+      for (const tomTomAlert of tomTomAlerts) {
+        const dedupeKey = `${row.user_id}:tomtom-heavy:${tomTomAlert.direction}:${tomTomAlert.strongest.route.id}:${new Date().toISOString().slice(0, 13)}`;
+        const alreadySent = await env.DB.prepare("SELECT id FROM alert_log WHERE dedupe_key = ?")
+          .bind(dedupeKey)
+          .first();
+        if (!alreadySent) {
+          try {
+            await sendEmail(env, {
+              to: email,
+              subject: `Rutealarm: Tæt trafik på ${tomTomAlert.strongest.route.name || "din rute"}`,
+              text: makeTomTomTrafficAlertText(tomTomAlert),
+            });
+            sent += 1;
+            await env.DB.prepare("INSERT INTO alert_log (id, user_id, dedupe_key, sent_at) VALUES (?, ?, ?, ?)")
+              .bind(crypto.randomUUID(), row.user_id, dedupeKey, new Date().toISOString())
+              .run();
+          } catch (error) {
+            errors.push({ userId: row.user_id, message: error.message });
+          }
+        }
+      }
+    } catch (error) {
+      errors.push({ userId: row.user_id, message: error.message || "Profilens alarmtjek fejlede." });
     }
   }
 
   return json({ ok: true, checked, sent, errors });
 }
 
-async function buildTomTomTrafficAlert(profile, env, trafficEvents, skippedRouteIds = new Set(), memo = new Map()) {
-  if (!env.TOMTOM_API_KEY && !env.GOOGLE_MAPS_API_KEY) return null;
-  const direction = inferDirection(profile, new Date());
-  if (!direction) return null;
+async function buildTomTomTrafficAlerts(profile, now, env, trafficEvents, skippedRouteIds = new Set(), memo = new Map()) {
+  if (!env.TOMTOM_API_KEY && !env.GOOGLE_MAPS_API_KEY) return [];
+  const directions = inferDirections(profile, now);
+  const alerts = [];
 
-  const routes = profile.routes && Array.isArray(profile.routes[direction]) ? profile.routes[direction] : [];
-  const evaluated = routes.map((route) => evaluateRoute(profile, route, direction, trafficEvents)).filter((result) => result.valid);
-  if (!evaluated.length) return null;
+  for (const direction of directions) {
+    const routes = profile.routes && Array.isArray(profile.routes[direction]) ? profile.routes[direction] : [];
+    const evaluated = routes.map((route) => evaluateRoute(profile, route, direction, trafficEvents)).filter((result) => result.valid);
+    if (!evaluated.length) continue;
 
-  const enriched = [];
-  for (const result of evaluated.slice(0, 6)) {
-    const tomtom = await getTomTomTraffic(env, result.route.points || [], memo);
-    enriched.push({
-      ...result,
-      tomtom,
-      score: result.delay + (tomtom && tomtom.ok ? Math.round((tomtom.delaySeconds || 0) / 60) : 0),
+    const enriched = [];
+    for (const result of evaluated.slice(0, 6)) {
+      const tomtom = await getTomTomTraffic(env, result.route.points || [], memo);
+      enriched.push({
+        ...result,
+        tomtom,
+        score: result.delay + (tomtom && tomtom.ok ? Math.round((tomtom.delaySeconds || 0) / 60) : 0),
+      });
+    }
+
+    const heavyRoutes = enriched.filter((result) =>
+      !skippedRouteIds.has(`${direction}:${result.route.id}`) &&
+      result.tomtom &&
+      result.tomtom.ok &&
+      ["heavy", "severe", "closed"].includes(result.tomtom.trafficLevel)
+    );
+    if (!heavyRoutes.length) continue;
+
+    const strongest = [...heavyRoutes].sort((a, b) =>
+      trafficSeverity(b.tomtom.trafficLevel) - trafficSeverity(a.tomtom.trafficLevel) ||
+      (b.tomtom.delaySeconds || 0) - (a.tomtom.delaySeconds || 0)
+    )[0];
+    const recommended = [...enriched].sort((a, b) => a.score - b.score || a.matches.length - b.matches.length)[0] || strongest;
+
+    alerts.push({
+      direction,
+      strongest,
+      overview: {
+        routes: enriched,
+        recommended,
+      },
     });
   }
 
-  const heavyRoutes = enriched.filter((result) =>
-    !skippedRouteIds.has(result.route.id) &&
-    result.tomtom &&
-    result.tomtom.ok &&
-    ["heavy", "severe", "closed"].includes(result.tomtom.trafficLevel)
-  );
-  if (!heavyRoutes.length) return null;
+  return alerts;
+}
 
-  const strongest = [...heavyRoutes].sort((a, b) =>
-    trafficSeverity(b.tomtom.trafficLevel) - trafficSeverity(a.tomtom.trafficLevel) ||
-    (b.tomtom.delaySeconds || 0) - (a.tomtom.delaySeconds || 0)
-  )[0];
-  const recommended = [...enriched].sort((a, b) => a.score - b.score || a.matches.length - b.matches.length)[0] || strongest;
-
-  return {
-    direction,
-    strongest,
-    overview: {
-      routes: enriched,
-      recommended,
-    },
-  };
+async function secretsMatch(provided, expected) {
+  const encoder = new TextEncoder();
+  const [providedHash, expectedHash] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(provided)),
+    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
+  ]);
+  return crypto.subtle.timingSafeEqual(providedHash, expectedHash);
 }
 
 async function buildRouteOverview(profile, alert, env, trafficEvents, memo = new Map()) {

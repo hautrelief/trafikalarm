@@ -1,6 +1,10 @@
 name = "trafikalarm-alert-cron"
 main = "workers/alert-cron.js"
-compatibility_date = "2026-06-13"
+compatibility_date = "2026-09-05"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
 
 [triggers]
 crons = ["*/5 * * * *"]

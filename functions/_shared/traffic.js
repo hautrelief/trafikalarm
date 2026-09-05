@@ -1,15 +1,14 @@
 export function evaluateProfile(profile, now = new Date(), events = []) {
-  const direction = inferDirection(profile, now);
-  if (!direction) return [];
+  return inferDirections(profile, now).flatMap((direction) => {
+    const routes = profile.routes && Array.isArray(profile.routes[direction]) ? profile.routes[direction] : [];
+    const results = routes.map((route) => evaluateRoute(profile, route, direction, events)).filter((result) => result.valid);
+    if (!results.length) return [];
 
-  const routes = profile.routes && Array.isArray(profile.routes[direction]) ? profile.routes[direction] : [];
-  const results = routes.map((route) => evaluateRoute(profile, route, direction, events)).filter((result) => result.valid);
-  if (!results.length) return [];
-
-  const best = [...results].sort((a, b) => a.delay - b.delay || a.matches.length - b.matches.length)[0];
-  return results
-    .filter((result) => result.matches.length)
-    .map((result) => ({ ...result, direction, best }));
+    const best = [...results].sort((a, b) => a.delay - b.delay || a.matches.length - b.matches.length)[0];
+    return results
+      .filter((result) => result.matches.length)
+      .map((result) => ({ ...result, direction, best }));
+  });
 }
 
 export function evaluateRoute(profile, routeItem, direction, events = []) {
@@ -48,20 +47,41 @@ export function evaluateRoute(profile, routeItem, direction, events = []) {
 }
 
 export function inferDirection(profile, now) {
-  const schedule = profile.schedule || {};
-  const day = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][now.getDay()];
-  if (Array.isArray(schedule.days) && schedule.days.length && !schedule.days.includes(day)) return null;
+  return inferDirections(profile, now)[0] || null;
+}
 
-  const minutes = now.getHours() * 60 + now.getMinutes();
-  if (between(minutes, schedule.departFrom, schedule.departTo)) return "work";
-  if (between(minutes, schedule.returnFrom, schedule.returnTo)) return "home";
-  return null;
+export function inferDirections(profile, now = new Date()) {
+  const schedule = profile.schedule || {};
+  const { day, minutes } = getCopenhagenTime(now);
+  if (Array.isArray(schedule.days) && schedule.days.length && !schedule.days.includes(day)) return [];
+
+  const directions = [];
+  if (between(minutes, schedule.departFrom, schedule.departTo)) directions.push("work");
+  if (between(minutes, schedule.returnFrom, schedule.returnTo)) directions.push("home");
+  return directions;
 }
 
 function between(minutes, from = "00:00", to = "23:59") {
   const start = parseTime(from);
   const end = parseTime(to);
-  return minutes >= start && minutes <= end;
+  return end >= start
+    ? minutes >= start && minutes <= end
+    : minutes >= start || minutes <= end;
+}
+
+function getCopenhagenTime(now) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Copenhagen",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return {
+    day: String(values.weekday || "").slice(0, 3).toLowerCase(),
+    minutes: Number(values.hour || 0) * 60 + Number(values.minute || 0),
+  };
 }
 
 function parseTime(value) {

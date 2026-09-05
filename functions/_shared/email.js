@@ -11,6 +11,7 @@ export async function sendEmail(env, payload) {
     headers: {
       Authorization: `Bearer ${env.RESEND_API_KEY}`,
       "Content-Type": "application/json",
+      "User-Agent": "Rutevarsling/1.0",
     },
     body: JSON.stringify({
       from,
