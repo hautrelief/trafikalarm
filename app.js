@@ -70,7 +70,7 @@ const defaultState = {
     home: [{ id: "home-main", name: "Primær rute", points: [] }],
   },
   routeStatuses: {},
-  googleTraffic: null,
+  tomTomTraffic: null,
   inbox: [],
   lastMatches: [],
   lastCheck: null,
@@ -146,8 +146,8 @@ const elements = {
   segmentCount: document.querySelector("#segmentCount"),
   eventList: document.querySelector("#eventList"),
   matchCount: document.querySelector("#matchCount"),
-  googleTraffic: document.querySelector("#googleTraffic"),
-  googleTrafficBadge: document.querySelector("#googleTrafficBadge"),
+  tomTomTraffic: document.querySelector("#tomTomTraffic"),
+  tomTomTrafficBadge: document.querySelector("#tomTomTrafficBadge"),
   inbox: document.querySelector("#inbox"),
   nextTripTile: document.querySelector("#nextTripTile"),
   routeOptions: document.querySelector("#routeOptions"),
@@ -670,7 +670,7 @@ function renderAll() {
   renderMap();
   renderSummary();
   renderMatches(state.lastMatches || []);
-  renderGoogleTraffic();
+  renderTomTomTraffic();
   renderInbox();
   renderNextTrip();
   renderRouteOptions();
@@ -805,7 +805,7 @@ function renderReverseRouteSource() {
     elements.reverseRouteSource.append(option);
     elements.reverseRouteSource.disabled = true;
     elements.copyReverseRoute.disabled = true;
-    elements.copyReverseRoute.title = `Tegn f�rst en ${sourceLabel}-rute`;
+    elements.copyReverseRoute.title = `Tegn først en ${sourceLabel}-rute`;
     return;
   }
 
@@ -950,8 +950,8 @@ function renderMatches(matches) {
 
   if (!matches.length) {
     const message = trafficEventsStatus.configured
-      ? "Ingen matchende h�ndelser p� den aktive rute."
-      : "Officiel trafikkilde er ikke sat op endnu. Google-rejsetid kan stadig bruges.";
+      ? "Ingen matchende hændelser på den aktive rute."
+      : "Officiel trafikkilde er ikke sat op endnu. TomTom-trafikflow kan stadig bruges.";
     elements.eventList.innerHTML = `<div class="empty">${message}</div>`;
     return;
   }
@@ -974,47 +974,69 @@ function renderMatches(matches) {
   });
 }
 
-function renderGoogleTraffic() {
-  if (!elements.googleTraffic || !elements.googleTrafficBadge) return;
-  const traffic = state.googleTraffic;
+function renderTomTomTraffic() {
+  if (!elements.tomTomTraffic || !elements.tomTomTrafficBadge) return;
+  const traffic = state.tomTomTraffic;
   if (!traffic) {
-    elements.googleTrafficBadge.textContent = "Fra";
-    elements.googleTraffic.innerHTML = `<div class="empty">Ikke tjekket endnu.</div>`;
+    elements.tomTomTrafficBadge.textContent = "Fra";
+    elements.tomTomTraffic.innerHTML = `<div class="empty">Ikke tjekket endnu.</div>`;
     return;
   }
 
   if (traffic.status === "loading") {
-    elements.googleTrafficBadge.textContent = "Tjekker";
-    elements.googleTraffic.innerHTML = `<div class="empty">Henter rejsetid fra Google Maps Platform...</div>`;
+    elements.tomTomTrafficBadge.textContent = "Tjekker";
+    elements.tomTomTraffic.innerHTML = `<div class="empty">Henter live trafikflow fra TomTom...</div>`;
     return;
   }
 
   if (traffic.status === "disabled") {
-    elements.googleTrafficBadge.textContent = "Fra";
-    elements.googleTraffic.innerHTML = `<div class="empty">${traffic.message}</div>`;
+    elements.tomTomTrafficBadge.textContent = "Fra";
+    elements.tomTomTraffic.innerHTML = `<div class="empty">${traffic.message}</div>`;
     return;
   }
 
   if (traffic.status === "error") {
-    elements.googleTrafficBadge.textContent = "Fejl";
-    elements.googleTraffic.innerHTML = `<div class="empty">${traffic.message}</div>`;
+    elements.tomTomTrafficBadge.textContent = "Fejl";
+    elements.tomTomTraffic.innerHTML = `<div class="empty">${traffic.message}</div>`;
     return;
   }
 
   const delayMinutes = Math.round((traffic.delaySeconds || 0) / 60);
-  const durationMinutes = Math.round((traffic.durationSeconds || 0) / 60);
-  const distanceKm = ((traffic.distanceMeters || 0) / 1000).toFixed(1).replace(".", ",");
-  const levelText = traffic.trafficLevel === "heavy"
-    ? "Unormalt meget trafik"
-    : traffic.trafficLevel === "moderate"
-      ? "Mere trafik end normalt"
-      : "Normal trafik";
+  if (traffic.provider === "Google Maps Platform") {
+    const durationMinutes = Math.round((traffic.durationSeconds || 0) / 60);
+    const distanceKm = ((traffic.distanceMeters || 0) / 1000).toFixed(1).replace(".", ",");
+    const levelText = traffic.trafficLevel === "heavy"
+      ? "Unormalt meget trafik"
+      : traffic.trafficLevel === "moderate"
+        ? "Mere trafik end normalt"
+        : "Normal trafik";
+    elements.tomTomTrafficBadge.textContent = traffic.trafficLevel === "heavy" ? "Høj" : traffic.trafficLevel === "moderate" ? "Moderat" : "Normal";
+    elements.tomTomTraffic.innerHTML = `
+      <strong>${levelText}</strong>
+      <span>${durationMinutes} min rejsetid · ${distanceKm} km</span>
+      <small>${delayMinutes ? `Ca. ${delayMinutes} min ekstra trafikforsinkelse` : "Ingen tydelig ekstra forsinkelse"} · Midlertidigt data fra Google Maps Platform</small>
+    `;
+    return;
+  }
+  const labels = {
+    closed: ["Mulig vejlukning", "Lukket"],
+    severe: ["Kraftig kø", "Kraftig"],
+    heavy: ["Tæt trafik", "Høj"],
+    moderate: ["Mere trafik end normalt", "Moderat"],
+    normal: ["Normal trafik", "Normal"],
+    unknown: ["Trafikniveau ukendt", "Ukendt"],
+  };
+  const [levelText, badgeText] = labels[traffic.trafficLevel] || labels.unknown;
+  const speedText = Number.isFinite(traffic.currentSpeed) && Number.isFinite(traffic.freeFlowSpeed)
+    ? `${Math.round(traffic.currentSpeed)} km/t nu mod normalt ${Math.round(traffic.freeFlowSpeed)} km/t`
+    : "Hastighed kunne ikke beregnes";
+  const sampleText = `${traffic.sampleCount || 0} målepunkt${traffic.sampleCount === 1 ? "" : "er"}`;
 
-  elements.googleTrafficBadge.textContent = traffic.trafficLevel === "heavy" ? "Høj" : traffic.trafficLevel === "moderate" ? "Moderat" : "Normal";
-  elements.googleTraffic.innerHTML = `
+  elements.tomTomTrafficBadge.textContent = badgeText;
+  elements.tomTomTraffic.innerHTML = `
     <strong>${levelText}</strong>
-    <span>${durationMinutes} min rejsetid · ${distanceKm} km</span>
-    <small>${delayMinutes ? `Ca. ${delayMinutes} min ekstra trafikforsinkelse` : "Ingen tydelig ekstra forsinkelse"} · Data fra Google Maps Platform</small>
+    <span>${speedText}</span>
+    <small>${delayMinutes ? `Mindst ca. ${delayMinutes} min ekstra på de målte segmenter` : "Ingen tydelig forsinkelse på de målte segmenter"} · ${sampleText} · Data fra TomTom Traffic</small>
   `;
 }
 
@@ -1313,14 +1335,14 @@ async function runTrafficCheck() {
   const activeMatches = state.lastMatches;
   const best = [...validResults].sort((a, b) => a.delay - b.delay || a.matches.length - b.matches.length)[0];
   elements.systemStatus.textContent = activeMatches.length ? `${activeMatches.length} relevant alarm` : "Ingen relevante alarmer";
-  state.googleTraffic = { status: "loading" };
+  state.tomTomTraffic = { status: "loading" };
   renderAll();
-  await updateGoogleTraffic(validResults[0].route);
-  renderGoogleTraffic();
+  await updateTomTomTraffic(validResults[0].route);
+  renderTomTomTraffic();
   sendMessages(activeMatches, best);
   saveState();
   if (!trafficEventsStatus.configured) {
-    showToast("Google-rejsetid er tjekket. Officiel trafikkilde er ikke sat op endnu.");
+    showToast("TomTom-trafikflow er tjekket. Officiel hændelseskilde er ikke sat op endnu.");
     return;
   }
   showToast(best.matches.length ? `Bedste alternativ: ${best.route.name}` : `${best.route.name} ser fri ud.`);
@@ -1440,13 +1462,46 @@ async function sendAlertEmail(payload) {
   return result;
 }
 
-async function updateGoogleTraffic(route) {
+async function updateTomTomTraffic(route) {
   const points = getValidRoutePoints(route);
   if (points.length < 2) {
-    state.googleTraffic = { status: "error", message: "Ruten skal have mindst to punkter." };
+    state.tomTomTraffic = { status: "error", message: "Ruten skal have mindst to punkter." };
     return;
   }
 
+  try {
+    const result = await apiRequest("/api/tomtom-route-traffic", {
+      method: "POST",
+      body: { points },
+    });
+
+    if (result.disabled) {
+      await updateGoogleTrafficFallback(points);
+      return;
+    }
+
+    state.tomTomTraffic = {
+      status: "ready",
+      provider: result.provider,
+      currentSpeed: result.currentSpeed,
+      freeFlowSpeed: result.freeFlowSpeed,
+      confidence: result.confidence,
+      delaySeconds: result.delaySeconds,
+      trafficLevel: result.trafficLevel,
+      roadClosure: result.roadClosure,
+      congestedSegments: result.congestedSegments,
+      sampleCount: result.sampleCount,
+      partial: result.partial,
+    };
+  } catch (error) {
+    state.tomTomTraffic = {
+      status: "error",
+      message: `Kunne ikke hente TomTom-trafikflow: ${error.message}`,
+    };
+  }
+}
+
+async function updateGoogleTrafficFallback(points) {
   try {
     const result = await apiRequest("/api/google-route-traffic", {
       method: "POST",
@@ -1455,30 +1510,20 @@ async function updateGoogleTraffic(route) {
         departureTime: nextDepartureTime().toISOString(),
       },
     });
-
     if (result.disabled) {
-      state.googleTraffic = {
-        status: "disabled",
-        message: "Google Maps API er ikke slået til endnu.",
-      };
+      state.tomTomTraffic = { status: "disabled", message: "TomTom Traffic er ikke slået til endnu." };
       return;
     }
-
-    state.googleTraffic = {
+    state.tomTomTraffic = {
       status: "ready",
       provider: result.provider,
-      departureTime: result.departureTime,
       distanceMeters: result.distanceMeters,
       durationSeconds: result.durationSeconds,
-      staticDurationSeconds: result.staticDurationSeconds,
       delaySeconds: result.delaySeconds,
       trafficLevel: result.trafficLevel,
     };
   } catch (error) {
-    state.googleTraffic = {
-      status: "error",
-      message: `Kunne ikke hente Google-rejsetid: ${error.message}`,
-    };
+    state.tomTomTraffic = { status: "error", message: `Kunne ikke hente live trafik: ${error.message}` };
   }
 }
 

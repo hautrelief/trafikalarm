@@ -1,4 +1,4 @@
-const CACHE_NAME = "trafikalarm-prototype-v9";
+const CACHE_NAME = "trafikalarm-prototype-v10";
 const ASSETS = [
   "./public/mobilepay-qr.png",
   "./public/login-background.jpg",

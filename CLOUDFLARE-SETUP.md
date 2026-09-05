@@ -31,6 +31,11 @@ P√• Pages-projektet under **Settings** ‚Üí **Variables and secrets**:
 - `RESEND_API_KEY` som secret.
 - `ALERT_FROM` som almindelig variabel, fx `Trafikalarm <onboarding@resend.dev>`.
 - `CRON_SECRET` som secret, fx en lang tilf√¶ldig tekst.
+- `TOMTOM_API_KEY` som secret. N√∏glen bruges kun af backend-funktionerne og sendes aldrig til browseren.
+
+TomTom-trafikflow bruger som standard h√∏jst tre m√•lepunkter pr. manuelt rutetjek og et samlet budget p√• 600 segmentopslag pr. UTC-d√∏gn. Gr√¶nserne kan justeres med de almindelige variabler `TOMTOM_ROUTE_SAMPLE_LIMIT`, `TOMTOM_MINUTE_LIMIT` og `TOMTOM_DAILY_SAMPLE_LIMIT`. Segmentdata caches hos Cloudflare i 60 sekunder.
+
+Indtil `TOMTOM_API_KEY` er sat, forts√¶tter appen automatisk med den eksisterende Google-trafikkilde. Dermed mister brugerne ikke live trafik under overgangen.
 
 N√•r du f√•r dit eget dom√¶ne godkendt i Resend, kan `ALERT_FROM` √¶ndres til en rigtig afsender p√• dit dom√¶ne.
 
@@ -99,24 +104,24 @@ https://trafikalarm-alert-cron.<dit-worker-subdomain>.workers.dev/run-now
 
 Svaret b√∏r indeholde `ok: true` og et resultat med antal profiler tjekket og mails sendt.
 
-## 7. Officielle trafikhÊndelser
+## 7. Officielle trafikh√¶ndelser
 
-Appen bruger ikke lÊngere lokale demo-hÊndelser som trafikdata. Den matcher kun ruter mod hÊndelser fra en officiel JSON/GeoJSON-kilde, nÂr kilden er sat op i Cloudflare.
+Appen bruger ikke l√¶ngere lokale demo-h√¶ndelser som trafikdata. Den matcher kun ruter mod h√¶ndelser fra en officiel JSON/GeoJSON-kilde, n√•r kilden er sat op i Cloudflare.
 
-PÂ Pages-projektet under **Settings** -> **Variables and secrets** kan du tilf¯je:
+P√• Pages-projektet under **Settings** ‚Üí **Variables and secrets** kan du tilf√∏je:
 
 - `TRAFFIC_EVENTS_URL` som almindelig variabel med URL'en til den officielle trafikfeed.
-- `TRAFFIC_EVENTS_SOURCE` som almindelig variabel, fx `Vejdirektoratet`, sÂ kilden stÂr pÊnt i appen og i mails.
+- `TRAFFIC_EVENTS_SOURCE` som almindelig variabel, fx `Vejdirektoratet`, s√• kilden st√•r p√¶nt i appen og i mails.
 
-Hvis `TRAFFIC_EVENTS_URL` ikke er sat, bruger appen stadig Google-rejsetid, men den viser ikke falske hÊndelser pÂ ruten.
+Hvis `TRAFFIC_EVENTS_URL` ikke er sat, bruger appen stadig TomTom-trafikflow, men den viser ikke falske h√¶ndelser p√• ruten.
 
 ### Dataudveksleren via AMQP
 
-Hvis Dataudveksleren leverer datasÊttet via AMQP, skal der bruges en lille bridge i stedet for en direkte `TRAFFIC_EVENTS_URL`.
+Hvis Dataudveksleren leverer datas√¶ttet via AMQP, skal der bruges en lille bridge i stedet for en direkte `TRAFFIC_EVENTS_URL`.
 
-1. K¯r `migrations/0003_traffic_events.sql` i D1.
-2. SÊt `TRAFFIC_INGEST_SECRET` pÂ Pages-projektet som secret.
-3. SÊt `TRAFFIC_EVENTS_SOURCE` til `Dataudveksleren`.
-4. K¯r bridgen i `dataudveksleren-bridge/` pÂ en server eller service, der kan holde en AMQP-forbindelse Âben.
+1. K√∏r `migrations/0003_traffic_events.sql` i D1.
+2. S√¶t `TRAFFIC_INGEST_SECRET` p√• Pages-projektet som secret.
+3. S√¶t `TRAFFIC_EVENTS_SOURCE` til `Dataudveksleren`.
+4. K√∏r bridgen i `dataudveksleren-bridge/` p√• en server eller service, der kan holde en AMQP-forbindelse √•ben.
 
-Bridgen sender hÊndelser ind i `/api/ingest-traffic-events`, og appen lÊser derefter de seneste hÊndelser fra D1.
+Bridgen sender h√¶ndelser ind i `/api/ingest-traffic-events`, og appen l√¶ser derefter de seneste h√¶ndelser fra D1.

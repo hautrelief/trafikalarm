@@ -14,6 +14,7 @@ export async function onRequestGet({ env }) {
       trafficEventsTable: dbReady,
       trafficIngestSecret: Boolean(getEnv(env, "TRAFFIC_INGEST_SECRET")),
       trafficEventsSource: Boolean(env.TRAFFIC_EVENTS_SOURCE),
+      tomTomApiKey: Boolean(env.TOMTOM_API_KEY),
       googleMapsApiKey: Boolean(env.GOOGLE_MAPS_API_KEY),
       resendApiKey: Boolean(env.RESEND_API_KEY),
       alertFrom: Boolean(env.ALERT_FROM),
