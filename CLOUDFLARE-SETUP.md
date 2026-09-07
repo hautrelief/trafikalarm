@@ -31,11 +31,14 @@ På Pages-projektet under **Settings** → **Variables and secrets**:
 - `RESEND_API_KEY` som secret.
 - `ALERT_FROM` som almindelig variabel, fx `Trafikalarm <onboarding@resend.dev>`.
 - `CRON_SECRET` som secret, fx en lang tilfældig tekst.
-- `TOMTOM_API_KEY` som secret. Nøglen bruges kun af backend-funktionerne og sendes aldrig til browseren.
+- `GOOGLE_MAPS_API_KEY` som secret. Det er standardkilden til live rejsetid og trafikniveau.
+- `TOMTOM_API_KEY` som secret, hvis du vil have TomTom som backup. Nøglen bruges kun af backend-funktionerne og sendes aldrig til browseren.
 
-TomTom-trafikflow bruger som standard højst tre målepunkter pr. manuelt rutetjek og et samlet budget på 600 segmentopslag pr. UTC-døgn. Grænserne kan justeres med de almindelige variabler `TOMTOM_ROUTE_SAMPLE_LIMIT`, `TOMTOM_MINUTE_LIMIT` og `TOMTOM_DAILY_SAMPLE_LIMIT`. Segmentdata caches hos Cloudflare i 60 sekunder.
+Google Maps Platform bruges som standard til live rejsetid og til at vurdere, om der er unormalt meget trafik. Hvis Google ikke er sat op eller ikke kan levere et svar, prøver appen TomTom som backup, når `TOMTOM_API_KEY` findes.
 
-Indtil `TOMTOM_API_KEY` er sat, fortsætter appen automatisk med den eksisterende Google-trafikkilde. Dermed mister brugerne ikke live trafik under overgangen.
+TomTom-backup bruger som standard højst tre målepunkter pr. manuelt rutetjek og et samlet budget på 600 segmentopslag pr. UTC-døgn. Grænserne kan justeres med de almindelige variabler `TOMTOM_ROUTE_SAMPLE_LIMIT`, `TOMTOM_MINUTE_LIMIT` og `TOMTOM_DAILY_SAMPLE_LIMIT`. Segmentdata caches hos Cloudflare i 60 sekunder.
+
+Indtil `TOMTOM_API_KEY` er sat, fortsætter appen automatisk med Google-trafikkilden. Dermed virker live trafik stadig uden TomTom-backup.
 
 Når du får dit eget domæne godkendt i Resend, kan `ALERT_FROM` ændres til en rigtig afsender på dit domæne.
 
@@ -113,7 +116,7 @@ På Pages-projektet under **Settings** → **Variables and secrets** kan du tilf
 - `TRAFFIC_EVENTS_URL` som almindelig variabel med URL'en til den officielle trafikfeed.
 - `TRAFFIC_EVENTS_SOURCE` som almindelig variabel, fx `Vejdirektoratet`, så kilden står pænt i appen og i mails.
 
-Hvis `TRAFFIC_EVENTS_URL` ikke er sat, bruger appen stadig TomTom-trafikflow, men den viser ikke falske hændelser på ruten.
+Hvis `TRAFFIC_EVENTS_URL` ikke er sat, bruger appen stadig Google live trafik med TomTom som backup, men den viser ikke falske hændelser på ruten.
 
 ### Dataudveksleren via AMQP
 

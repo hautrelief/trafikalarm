@@ -43,13 +43,13 @@ export async function onRequestPost({ request, env }) {
       const profile = JSON.parse(row.profile_json);
       const email = profile.user && profile.user.email;
       if (!email) continue;
-      const tomTomMemo = new Map();
+      const liveTrafficMemo = new Map();
 
       const alerts = evaluateProfile(profile, now, trafficEvents);
       const sentOfficialRouteIds = new Set();
       for (const alert of alerts) {
         const strongest = [...alert.matches].sort((a, b) => b.delay - a.delay)[0];
-        const routeOverview = await buildRouteOverview(profile, alert, env, trafficEvents, tomTomMemo);
+        const routeOverview = await buildRouteOverview(profile, alert, env, trafficEvents, liveTrafficMemo);
         const dedupeKey = `${row.user_id}:${alert.direction}:${alert.route.id}:${strongest.id}:${new Date().toISOString().slice(0, 13)}`;
         const alreadySent = await env.DB.prepare("SELECT id FROM alert_log WHERE dedupe_key = ?")
           .bind(dedupeKey)
@@ -72,9 +72,9 @@ export async function onRequestPost({ request, env }) {
         }
       }
 
-      const tomTomAlerts = await buildTomTomTrafficAlerts(profile, now, env, trafficEvents, sentOfficialRouteIds, tomTomMemo);
-      for (const tomTomAlert of tomTomAlerts) {
-        const dedupeKey = `${row.user_id}:tomtom-heavy:${tomTomAlert.direction}:${tomTomAlert.strongest.route.id}:${new Date().toISOString().slice(0, 13)}`;
+      const googleTrafficAlerts = await buildLiveTrafficAlerts(profile, now, env, trafficEvents, sentOfficialRouteIds, liveTrafficMemo);
+      for (const googleTrafficAlert of googleTrafficAlerts) {
+        const dedupeKey = `${row.user_id}:live-traffic-heavy:${googleTrafficAlert.direction}:${googleTrafficAlert.strongest.route.id}:${new Date().toISOString().slice(0, 13)}`;
         const alreadySent = await env.DB.prepare("SELECT id FROM alert_log WHERE dedupe_key = ?")
           .bind(dedupeKey)
           .first();
@@ -82,8 +82,8 @@ export async function onRequestPost({ request, env }) {
           try {
             await sendEmail(env, {
               to: email,
-              subject: `Rutealarm: Tæt trafik på ${tomTomAlert.strongest.route.name || "din rute"}`,
-              text: makeTomTomTrafficAlertText(tomTomAlert),
+              subject: `Rutealarm: Unormalt meget trafik på ${googleTrafficAlert.strongest.route.name || "din rute"}`,
+              text: makeLiveTrafficAlertText(googleTrafficAlert),
             });
             sent += 1;
             await env.DB.prepare("INSERT INTO alert_log (id, user_id, dedupe_key, sent_at) VALUES (?, ?, ?, ?)")
@@ -102,7 +102,7 @@ export async function onRequestPost({ request, env }) {
   return json({ ok: true, checked, sent, errors });
 }
 
-async function buildTomTomTrafficAlerts(profile, now, env, trafficEvents, skippedRouteIds = new Set(), memo = new Map()) {
+async function buildLiveTrafficAlerts(profile, now, env, trafficEvents, skippedRouteIds = new Set(), memo = new Map()) {
   if (!env.TOMTOM_API_KEY && !env.GOOGLE_MAPS_API_KEY) return [];
   const directions = inferDirections(profile, now);
   const alerts = [];
@@ -114,25 +114,25 @@ async function buildTomTomTrafficAlerts(profile, now, env, trafficEvents, skippe
 
     const enriched = [];
     for (const result of evaluated.slice(0, 6)) {
-      const tomtom = await getTomTomTraffic(env, result.route.points || [], memo);
+      const liveTraffic = await getLiveTraffic(env, result.route.points || [], memo);
       enriched.push({
         ...result,
-        tomtom,
-        score: result.delay + (tomtom && tomtom.ok ? Math.round((tomtom.delaySeconds || 0) / 60) : 0),
+        liveTraffic,
+        score: result.delay + (liveTraffic && liveTraffic.ok ? Math.round((liveTraffic.delaySeconds || 0) / 60) : 0),
       });
     }
 
     const heavyRoutes = enriched.filter((result) =>
       !skippedRouteIds.has(`${direction}:${result.route.id}`) &&
-      result.tomtom &&
-      result.tomtom.ok &&
-      ["heavy", "severe", "closed"].includes(result.tomtom.trafficLevel)
+      result.liveTraffic &&
+      result.liveTraffic.ok &&
+      ["heavy", "severe", "closed"].includes(result.liveTraffic.trafficLevel)
     );
     if (!heavyRoutes.length) continue;
 
     const strongest = [...heavyRoutes].sort((a, b) =>
-      trafficSeverity(b.tomtom.trafficLevel) - trafficSeverity(a.tomtom.trafficLevel) ||
-      (b.tomtom.delaySeconds || 0) - (a.tomtom.delaySeconds || 0)
+      trafficSeverity(b.liveTraffic.trafficLevel) - trafficSeverity(a.liveTraffic.trafficLevel) ||
+      (b.liveTraffic.delaySeconds || 0) - (a.liveTraffic.delaySeconds || 0)
     )[0];
     const recommended = [...enriched].sort((a, b) => a.score - b.score || a.matches.length - b.matches.length)[0] || strongest;
 
@@ -155,7 +155,15 @@ async function secretsMatch(provided, expected) {
     crypto.subtle.digest("SHA-256", encoder.encode(provided)),
     crypto.subtle.digest("SHA-256", encoder.encode(expected)),
   ]);
-  return crypto.subtle.timingSafeEqual(providedHash, expectedHash);
+  const providedBytes = new Uint8Array(providedHash);
+  const expectedBytes = new Uint8Array(expectedHash);
+  if (providedBytes.length !== expectedBytes.length) return false;
+
+  let diff = 0;
+  for (let index = 0; index < providedBytes.length; index += 1) {
+    diff |= providedBytes[index] ^ expectedBytes[index];
+  }
+  return diff === 0;
 }
 
 async function buildRouteOverview(profile, alert, env, trafficEvents, memo = new Map()) {
@@ -164,11 +172,11 @@ async function buildRouteOverview(profile, alert, env, trafficEvents, memo = new
   const enriched = [];
 
   for (const result of evaluated.slice(0, 6)) {
-    const tomtom = await getTomTomTraffic(env, result.route.points || [], memo);
+    const liveTraffic = await getLiveTraffic(env, result.route.points || [], memo);
     enriched.push({
       ...result,
-      tomtom,
-      score: result.delay + (tomtom && tomtom.ok ? Math.round((tomtom.delaySeconds || 0) / 60) : 0),
+      liveTraffic,
+      score: result.delay + (liveTraffic && liveTraffic.ok ? Math.round((liveTraffic.delaySeconds || 0) / 60) : 0),
     });
   }
 
@@ -203,19 +211,19 @@ ${routeLines}
 Du kan ændre eller slå dine alarmer fra ved at logge ind i Rutealarm.`;
 }
 
-function makeTomTomTrafficAlertText(alert) {
+function makeLiveTrafficAlertText(alert) {
   const routeName = alert.strongest.route.name || "din rute";
   const direction = alert.direction === "work" ? "Fra" : "Til";
-  const delayMinutes = Math.round((alert.strongest.tomtom.delaySeconds || 0) / 60);
+  const delayMinutes = Math.round((alert.strongest.liveTraffic.delaySeconds || 0) / 60);
   const recommended = alert.overview.recommended && alert.overview.recommended.route
     ? alert.overview.recommended.route.name || "alternativ rute"
     : routeName;
   const routeLines = alert.overview.routes.length
     ? alert.overview.routes.map(formatRouteOverview).join("\n\n")
     : "Ingen øvrige ruter kunne vurderes.";
-  const provider = alert.strongest.tomtom.provider || "TomTom Traffic";
+  const provider = alert.strongest.liveTraffic.provider || "Google Maps Platform";
 
-  return `${provider} melder tæt eller langsom trafik.
+  return `${provider} melder unormalt meget trafik.
 
 Rute: ${routeName}
 Retning: ${direction}
@@ -239,45 +247,67 @@ function formatRouteOverview(result) {
         .join("\n")
     : "- Ingen matchende varsler på denne rute.";
   return `${routeName}
-${formatTomTomTraffic(result.tomtom)}
+${formatLiveTraffic(result.liveTraffic)}
 Varsler:
 ${alertText}`;
 }
 
-function formatTomTomTraffic(tomtom) {
-  if (!tomtom) return "Live trafik: Ikke slået til.";
-  if (!tomtom.ok) return `Live trafik: ${tomtom.message || "Kunne ikke hentes."}`;
-  const delayMinutes = Math.round((tomtom.delaySeconds || 0) / 60);
+function formatLiveTraffic(liveTraffic) {
+  if (!liveTraffic) return "Live trafik: Ikke slået til.";
+  if (!liveTraffic.ok) return `Live trafik: ${liveTraffic.message || "Kunne ikke hentes."}`;
+  const delayMinutes = Math.round((liveTraffic.delaySeconds || 0) / 60);
   const level = {
     closed: "mulig vejlukning",
     severe: "kraftig kø",
-    heavy: "tæt trafik",
+    heavy: "unormalt meget trafik",
     moderate: "mere trafik end normalt",
     normal: "normal trafik",
-  }[tomtom.trafficLevel] || "ukendt trafikniveau";
-  const speed = Number.isFinite(tomtom.currentSpeed) && Number.isFinite(tomtom.freeFlowSpeed)
-    ? `, ${Math.round(tomtom.currentSpeed)} km/t mod normalt ${Math.round(tomtom.freeFlowSpeed)} km/t`
+  }[liveTraffic.trafficLevel] || "ukendt trafikniveau";
+
+  if (liveTraffic.provider === "Google Maps Platform") {
+    const durationMinutes = Math.round((liveTraffic.durationSeconds || 0) / 60);
+    const distanceKm = Number.isFinite(liveTraffic.distanceMeters)
+      ? `, ${((liveTraffic.distanceMeters || 0) / 1000).toFixed(1).replace(".", ",")} km`
+      : "";
+    return `Google Maps Platform: ${level}, ${durationMinutes} min rejsetid${distanceKm}${delayMinutes ? `, ca. ${delayMinutes} min ekstra` : ""}.`;
+  }
+
+  const speed = Number.isFinite(liveTraffic.currentSpeed) && Number.isFinite(liveTraffic.freeFlowSpeed)
+    ? `, ${Math.round(liveTraffic.currentSpeed)} km/t mod normalt ${Math.round(liveTraffic.freeFlowSpeed)} km/t`
     : "";
-  return `${tomtom.provider || "TomTom Traffic"}: ${level}${speed}${delayMinutes ? `, mindst ca. ${delayMinutes} min ekstra` : ""}.`;
+  return `${liveTraffic.provider || "TomTom Traffic"}: ${level}${speed}${delayMinutes ? `, mindst ca. ${delayMinutes} min ekstra` : ""}.`;
 }
 
-async function getTomTomTraffic(env, points, memo) {
+async function getLiveTraffic(env, points, memo) {
   const key = (points || [])
     .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng))
     .map((point) => `${Number(point.lat).toFixed(4)},${Number(point.lng).toFixed(4)}`)
     .join(";");
   if (memo.has(key)) return memo.get(key);
   try {
-    const result = env.TOMTOM_API_KEY
-      ? await getTomTomRouteTraffic(env, points, { maxSamples: 1 })
-      : await getGoogleTraffic(env, points);
+    const result = await getGoogleTrafficWithTomTomFallback(env, points);
     memo.set(key, result);
     return result;
   } catch (error) {
-    const result = { ok: false, message: error.message || "TomTom-kald fejlede." };
+    const result = { ok: false, message: error.message || "Live trafik-kald fejlede." };
     memo.set(key, result);
     return result;
   }
+}
+
+async function getGoogleTrafficWithTomTomFallback(env, points) {
+  const google = await getGoogleTraffic(env, points);
+  if (google && google.ok) return google;
+  if (!env.TOMTOM_API_KEY) return google || { ok: false, disabled: true, message: "GOOGLE_MAPS_API_KEY mangler i Cloudflare." };
+
+  const tomtom = await getTomTomRouteTraffic(env, points, { maxSamples: 1 });
+  if (tomtom && tomtom.ok) {
+    return {
+      ...tomtom,
+      fallbackFrom: google && google.provider ? google.provider : "Google Maps Platform",
+    };
+  }
+  return google || tomtom;
 }
 
 async function getGoogleTraffic(env, points) {

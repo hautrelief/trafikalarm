@@ -1,4 +1,5 @@
 import { json, optionsResponse, readJson } from "../_shared/http.js";
+import { getTomTomRouteTraffic } from "../_shared/tomtom-traffic.js";
 
 const ROUTES_ENDPOINT = "https://routes.googleapis.com/directions/v2:computeRoutes";
 const DEFAULT_DAILY_LIMIT = 100;
@@ -17,16 +18,18 @@ export async function onRequestPost({ request, env }) {
 }
 
 async function handleRequest(request, env) {
+  const payload = await readJson(request);
+  const points = Array.isArray(payload && payload.points) ? payload.points.filter(isPoint) : [];
+  if (points.length < 2) return json({ error: "Ruten skal have mindst to punkter." }, 400);
+
   if (!env.GOOGLE_MAPS_API_KEY) {
+    const fallback = await getTomTomFallback(env, points, "GOOGLE_MAPS_API_KEY mangler i Cloudflare.");
+    if (fallback) return json(fallback);
     return json({ ok: false, disabled: true, message: "GOOGLE_MAPS_API_KEY mangler i Cloudflare." });
   }
 
   const limitError = await enforceGoogleRateLimit(request, env);
   if (limitError) return limitError;
-
-  const payload = await readJson(request);
-  const points = Array.isArray(payload && payload.points) ? payload.points.filter(isPoint) : [];
-  if (points.length < 2) return json({ error: "Ruten skal have mindst to punkter." }, 400);
 
   const departureTime = normalizeDepartureTime(payload.departureTime);
   const body = {
@@ -52,11 +55,17 @@ async function handleRequest(request, env) {
 
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
+    const fallback = await getTomTomFallback(env, points, result.error && result.error.message ? result.error.message : "Google Routes svarede ikke.");
+    if (fallback) return json(fallback);
     return json({ error: result.error && result.error.message ? result.error.message : "Google Routes svarede ikke." }, 502);
   }
 
   const route = result.routes && result.routes[0];
-  if (!route) return json({ error: "Google fandt ingen rute." }, 502);
+  if (!route) {
+    const fallback = await getTomTomFallback(env, points, "Google fandt ingen rute.");
+    if (fallback) return json(fallback);
+    return json({ error: "Google fandt ingen rute." }, 502);
+  }
 
   const durationSeconds = parseGoogleDuration(route.duration);
   const staticDurationSeconds = parseGoogleDuration(route.staticDuration);
@@ -75,6 +84,23 @@ async function handleRequest(request, env) {
     delaySeconds,
     trafficLevel: classifyTraffic(delaySeconds, durationSeconds, speedIntervals),
   });
+}
+
+async function getTomTomFallback(env, points, googleMessage) {
+  if (!env.TOMTOM_API_KEY) return null;
+  try {
+    const result = await getTomTomRouteTraffic(env, points, {
+      maxSamples: env.TOMTOM_ROUTE_SAMPLE_LIMIT,
+    });
+    if (!result.ok) return null;
+    return {
+      ...result,
+      fallbackFrom: "Google Maps Platform",
+      fallbackReason: googleMessage,
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function enforceGoogleRateLimit(request, env) {

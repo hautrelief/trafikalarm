@@ -951,7 +951,7 @@ function renderMatches(matches) {
   if (!matches.length) {
     const message = trafficEventsStatus.configured
       ? "Ingen matchende hændelser på den aktive rute."
-      : "Officiel trafikkilde er ikke sat op endnu. TomTom-trafikflow kan stadig bruges.";
+      : "Officiel trafikkilde er ikke sat op endnu. Google-trafik kan stadig bruges.";
     elements.eventList.innerHTML = `<div class="empty">${message}</div>`;
     return;
   }
@@ -985,7 +985,7 @@ function renderTomTomTraffic() {
 
   if (traffic.status === "loading") {
     elements.tomTomTrafficBadge.textContent = "Tjekker";
-    elements.tomTomTraffic.innerHTML = `<div class="empty">Henter live trafikflow fra TomTom...</div>`;
+    elements.tomTomTraffic.innerHTML = `<div class="empty">Henter live trafik fra Google...</div>`;
     return;
   }
 
@@ -1014,7 +1014,7 @@ function renderTomTomTraffic() {
     elements.tomTomTraffic.innerHTML = `
       <strong>${levelText}</strong>
       <span>${durationMinutes} min rejsetid · ${distanceKm} km</span>
-      <small>${delayMinutes ? `Ca. ${delayMinutes} min ekstra trafikforsinkelse` : "Ingen tydelig ekstra forsinkelse"} · Midlertidigt data fra Google Maps Platform</small>
+      <small>${delayMinutes ? `Ca. ${delayMinutes} min ekstra trafikforsinkelse` : "Ingen tydelig ekstra forsinkelse"} · Data fra Google Maps Platform</small>
     `;
     return;
   }
@@ -1342,7 +1342,7 @@ async function runTrafficCheck() {
   sendMessages(activeMatches, best);
   saveState();
   if (!trafficEventsStatus.configured) {
-    showToast("TomTom-trafikflow er tjekket. Officiel hændelseskilde er ikke sat op endnu.");
+    showToast("Google-trafik er tjekket. Officiel hændelseskilde er ikke sat op endnu.");
     return;
   }
   showToast(best.matches.length ? `Bedste alternativ: ${best.route.name}` : `${best.route.name} ser fri ud.`);
@@ -1470,39 +1470,6 @@ async function updateTomTomTraffic(route) {
   }
 
   try {
-    const result = await apiRequest("/api/tomtom-route-traffic", {
-      method: "POST",
-      body: { points },
-    });
-
-    if (result.disabled) {
-      await updateGoogleTrafficFallback(points);
-      return;
-    }
-
-    state.tomTomTraffic = {
-      status: "ready",
-      provider: result.provider,
-      currentSpeed: result.currentSpeed,
-      freeFlowSpeed: result.freeFlowSpeed,
-      confidence: result.confidence,
-      delaySeconds: result.delaySeconds,
-      trafficLevel: result.trafficLevel,
-      roadClosure: result.roadClosure,
-      congestedSegments: result.congestedSegments,
-      sampleCount: result.sampleCount,
-      partial: result.partial,
-    };
-  } catch (error) {
-    state.tomTomTraffic = {
-      status: "error",
-      message: `Kunne ikke hente TomTom-trafikflow: ${error.message}`,
-    };
-  }
-}
-
-async function updateGoogleTrafficFallback(points) {
-  try {
     const result = await apiRequest("/api/google-route-traffic", {
       method: "POST",
       body: {
@@ -1510,21 +1477,57 @@ async function updateGoogleTrafficFallback(points) {
         departureTime: nextDepartureTime().toISOString(),
       },
     });
+
     if (result.disabled) {
-      state.tomTomTraffic = { status: "disabled", message: "TomTom Traffic er ikke slået til endnu." };
+      await updateTomTomTrafficFallback(points);
       return;
     }
-    state.tomTomTraffic = {
-      status: "ready",
-      provider: result.provider,
-      distanceMeters: result.distanceMeters,
-      durationSeconds: result.durationSeconds,
-      delaySeconds: result.delaySeconds,
-      trafficLevel: result.trafficLevel,
-    };
+
+    state.tomTomTraffic = liveTrafficState(result);
   } catch (error) {
-    state.tomTomTraffic = { status: "error", message: `Kunne ikke hente live trafik: ${error.message}` };
+    await updateTomTomTrafficFallback(points, error);
   }
+}
+
+async function updateTomTomTrafficFallback(points, googleError = null) {
+  try {
+    const result = await apiRequest("/api/tomtom-route-traffic", {
+      method: "POST",
+      body: { points },
+    });
+    if (result.disabled) {
+      state.tomTomTraffic = {
+        status: "disabled",
+        message: googleError
+          ? `Google-trafik kunne ikke hentes (${googleError.message}), og TomTom backup er ikke slået til endnu.`
+          : "Google Maps Platform er ikke slået til endnu, og TomTom backup mangler også.",
+      };
+      return;
+    }
+    state.tomTomTraffic = liveTrafficState(result);
+  } catch (error) {
+    const googleMessage = googleError ? `Google: ${googleError.message}. ` : "";
+    state.tomTomTraffic = { status: "error", message: `${googleMessage}TomTom backup fejlede: ${error.message}` };
+  }
+}
+
+function liveTrafficState(result) {
+  return {
+    status: "ready",
+    provider: result.provider,
+    distanceMeters: result.distanceMeters,
+    durationSeconds: result.durationSeconds,
+    staticDurationSeconds: result.staticDurationSeconds,
+    currentSpeed: result.currentSpeed,
+    freeFlowSpeed: result.freeFlowSpeed,
+    confidence: result.confidence,
+    delaySeconds: result.delaySeconds,
+    trafficLevel: result.trafficLevel,
+    roadClosure: result.roadClosure,
+    congestedSegments: result.congestedSegments,
+    sampleCount: result.sampleCount,
+    partial: result.partial,
+  };
 }
 
 function nextDepartureTime() {
