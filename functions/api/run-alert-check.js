@@ -106,6 +106,7 @@ async function buildLiveTrafficAlerts(profile, now, env, trafficEvents, skippedR
   if (!env.TOMTOM_API_KEY && !env.GOOGLE_MAPS_API_KEY) return [];
   const directions = inferDirections(profile, now);
   const alerts = [];
+  const minDelaySeconds = Math.max(0, Number(profile.schedule?.minDelay || 0)) * 60;
 
   for (const direction of directions) {
     const routes = profile.routes && Array.isArray(profile.routes[direction]) ? profile.routes[direction] : [];
@@ -126,7 +127,12 @@ async function buildLiveTrafficAlerts(profile, now, env, trafficEvents, skippedR
       !skippedRouteIds.has(`${direction}:${result.route.id}`) &&
       result.liveTraffic &&
       result.liveTraffic.ok &&
-      ["heavy", "severe", "closed"].includes(result.liveTraffic.trafficLevel)
+      ["heavy", "severe", "closed"].includes(result.liveTraffic.trafficLevel) &&
+      (
+        result.liveTraffic.trafficLevel === "closed" ||
+        result.liveTraffic.roadClosure ||
+        (result.liveTraffic.delaySeconds || 0) >= minDelaySeconds
+      )
     );
     if (!heavyRoutes.length) continue;
 
