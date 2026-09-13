@@ -7,6 +7,8 @@ const assets = [
   "index.html",
   "styles.css",
   "app.js",
+  "admin.html",
+  "admin.js",
   "manifest.json",
   "service-worker.js",
   "icon.svg",
@@ -48,7 +50,7 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname.endsWith("/") && url.pathname !== "/" ? url.pathname.slice(0, -1) : url.pathname;
     const asset = ASSETS[path] || ASSETS[path + ".html"] || ASSETS["/index.html"];
-    const noStore = ["/", "/index.html", "/app.js", "/styles.css", "/manifest.json", "/service-worker.js"].includes(path);
+    const noStore = ["/", "/index.html", "/admin.html", "/app.js", "/admin.js", "/styles.css", "/manifest.json", "/service-worker.js"].includes(path);
     const headers = new Headers({
       "content-type": asset.type,
       "cache-control": noStore ? "no-store" : "public, max-age=3600",

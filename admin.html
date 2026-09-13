@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="da">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0f766e" />
+    <title>Administration · Rutevarsling</title>
+    <link rel="icon" type="image/png" sizes="96x96" href="public/app-icon-96.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="admin-page">
+    <div class="app-shell admin-shell">
+      <header class="topbar">
+        <a class="brand admin-brand" href="/">
+          <span class="brand-mark" aria-hidden="true"><img src="public/app-icon-96.png" alt="" /></span>
+          <span><strong>Rutevarsling</strong><small>Administration</small></span>
+        </a>
+        <a class="button secondary" href="/">Tilbage til appen</a>
+      </header>
+
+      <main class="admin-main">
+        <section id="adminLoading" class="panel admin-message" aria-live="polite">Henter brugere…</section>
+        <section id="adminError" class="panel admin-message admin-error" hidden>
+          <h1>Ingen adgang</h1>
+          <p id="adminErrorText">Log ind på Rutevarsling med din administratorkonto først.</p>
+          <a class="button primary" href="/">Gå til login</a>
+        </section>
+
+        <div id="adminContent" hidden>
+          <div class="admin-heading">
+            <div><p class="eyebrow">Administration</p><h1>Brugere</h1></div>
+            <button class="button secondary" id="refreshUsers" type="button">Opdatér</button>
+          </div>
+
+          <section class="admin-stats" aria-label="Brugerstatistik">
+            <article class="panel stat-card"><span>Oprettede brugere</span><strong id="totalUsers">0</strong></article>
+            <article class="panel stat-card"><span>Aktive alarmer</span><strong id="monitoringUsers">0</strong></article>
+            <article class="panel stat-card"><span>Nye de seneste 30 dage</span><strong id="recentUsers">0</strong></article>
+          </section>
+
+          <section class="panel admin-users-panel">
+            <div class="admin-toolbar">
+              <label for="userSearch">Søg efter navn eller mail</label>
+              <input id="userSearch" type="search" placeholder="Skriv navn eller mail" autocomplete="off" />
+            </div>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead><tr><th>Bruger</th><th>Oprettet</th><th>Overvågning</th><th>Alarmer</th><th><span class="sr-only">Handlinger</span></th></tr></thead>
+                <tbody id="userRows"></tbody>
+              </table>
+            </div>
+            <div class="admin-empty" id="adminEmpty" hidden>Ingen brugere matcher din søgning.</div>
+          </section>
+        </div>
+      </main>
+    </div>
+    <div class="toast" id="adminToast" role="status" aria-live="polite"></div>
+    <script src="admin.js" defer></script>
+  </body>
+</html>

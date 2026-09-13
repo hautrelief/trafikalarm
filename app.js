@@ -109,6 +109,7 @@ const elements = {
   loginStatus: document.querySelector("#loginStatus"),
   logoutProfile: document.querySelector("#logoutProfile"),
   topLogoutProfile: document.querySelector("#topLogoutProfile"),
+  adminLink: document.querySelector("#adminLink"),
   accountTitle: document.querySelector("#accountTitle"),
   accountSubtitle: document.querySelector("#accountSubtitle"),
   profileForm: document.querySelector("#profileForm"),
@@ -164,6 +165,19 @@ function init() {
   syncForm();
   renderAll();
   registerServiceWorker();
+  updateAdminLink();
+}
+
+async function updateAdminLink() {
+  elements.adminLink.hidden = true;
+  if (!state.cloud.sessionToken) return;
+
+  try {
+    await apiRequest("/api/admin-users?summary=1", { token: state.cloud.sessionToken });
+    elements.adminLink.hidden = false;
+  } catch {
+    elements.adminLink.hidden = true;
+  }
 }
 
 function loadState() {
@@ -1614,6 +1628,7 @@ async function verifyLoginCode() {
     state.login.codeRequestedAt = null;
     state.login.codeEmail = "";
     state.cloud.lastSync = new Date().toISOString();
+    updateAdminLink();
     const message = shouldSyncAfterLogin && result.profile ? "Du er logget ind. Lokale ruter er bevaret og gemmes i skyen." : (result.profile ? "Du er logget ind, og profilen er hentet." : "Du er logget ind. Dine ændringer gemmes automatisk.");
     syncForm();
     renderAll();
@@ -1669,6 +1684,7 @@ async function syncCloudProfile(options = {}) {
 
 function logoutProfile() {
   state.cloud = structuredClone(defaultState.cloud);
+  elements.adminLink.hidden = true;
   state.login = structuredClone(defaultState.login);
   saveState();
   renderAll();

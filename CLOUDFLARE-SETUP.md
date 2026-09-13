@@ -33,6 +33,7 @@ På Pages-projektet under **Settings** → **Variables and secrets**:
 - `CRON_SECRET` som secret, fx en lang tilfældig tekst.
 - `GOOGLE_MAPS_API_KEY` som secret. Det er standardkilden til live rejsetid og trafikniveau.
 - `TOMTOM_API_KEY` som secret, hvis du vil have TomTom som backup. Nøglen bruges kun af backend-funktionerne og sendes aldrig til browseren.
+- `ADMIN_EMAILS` som almindelig variabel med de mailadresser, der må åbne administratorsiden, adskilt med komma.
 
 Google Maps Platform bruges som standard til live rejsetid og til at vurdere, om der er unormalt meget trafik. Hvis Google ikke er sat op eller ikke kan levere et svar, prøver appen TomTom som backup, når `TOMTOM_API_KEY` findes.
 
